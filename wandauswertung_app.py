@@ -1,3 +1,4 @@
+import base64
 import io
 import re
 import tempfile
@@ -13,24 +14,29 @@ import ifcopenshell.util.shape as shp
 import ifcopenshell.util.unit as un
 from openpyxl.styles import Font, PatternFill
 
-# Farben: VIVAWEST-Design (Dunkelblau, Grün, Hellgrau)
-BLAU, GRUEN, HELL = "#004B87", "#7AB51D", "#EEF3F8"
+# Farben: Harmonische Beige- und Sandtöne (Taupe, Warmes Beige, Creme, Dunkelbraun)
+HAUPT_BEIGE = "#8C735B"   # Warmes Taupe-Braun für Kopfzeile & Tabellenköpfe
+AKZENT_SAND = "#C8B299"   # Sandbeige für Rahmen & Akzentlinien
+HELL_CREME  = "#F5EFE6"   # Helles Creme-Beige für Karten & Hintergrundboxen
+TEXT_BRAUN  = "#3E3228"   # Dunkles Espresso-Braun für hohen Kontrast
 
 st.set_page_config(page_title="bauteilauswertung-ifc", layout="wide")
 st.markdown(f"""<style>
-.kopf{{background:{BLAU};color:#fff;padding:22px 26px;border-radius:10px;border-bottom:5px solid {GRUEN};margin-bottom:20px}}
+.kopf{{background:{HAUPT_BEIGE};color:#fff;padding:22px 26px;border-radius:10px;border-bottom:5px solid {AKZENT_SAND};margin-bottom:20px}}
 .kopf h1{{color:#fff;margin:0;font-size:1.75rem}}
-.kopf p{{color:#E2ECF5;margin:6px 0 0 0;font-size:1rem}}
-.karte{{background:{HELL};border-left:6px solid {GRUEN};padding:14px 18px;border-radius:8px;margin-bottom:10px}}
-.karte span{{color:#555;font-size:0.9rem}} .karte b{{display:block;color:{BLAU};font-size:1.8rem}}
-.info-box{{background:#FFFFFF;border:1px solid #D8E2EC;border-top:4px solid {BLAU};padding:18px 20px;border-radius:8px;height:100%;box-shadow:0 2px 4px rgba(0,0,0,0.04)}}
-.info-box h4{{color:{BLAU};margin-top:0;margin-bottom:8px;font-size:1.1rem}}
-.info-box p{{color:#334E68;font-size:0.95rem;line-height:1.5;margin:0}}
-.ueber-mich{{background:{HELL};border-left:6px solid {BLAU};padding:20px 24px;border-radius:8px;margin-top:20px}}
-.ueber-mich h3{{margin-top:0;color:{BLAU}}}
-.ueber-mich p{{color:#243B53;font-size:0.96rem;line-height:1.6;margin-bottom:8px}}
-[data-testid="stTable"] th{{background:{BLAU}!important;color:#fff!important}}
-h3{{color:{BLAU}}}
+.kopf p{{color:#F5EFE6;margin:6px 0 0 0;font-size:1rem}}
+.karte{{background:{HELL_CREME};border-left:6px solid {HAUPT_BEIGE};padding:14px 18px;border-radius:8px;margin-bottom:10px}}
+.karte span{{color:#6E5D4F;font-size:0.9rem}} .karte b{{display:block;color:{TEXT_BRAUN};font-size:1.8rem}}
+.info-box{{background:#FAF7F2;border:1px solid #E5DCCB;border-top:4px solid {HAUPT_BEIGE};padding:18px 20px;border-radius:8px;height:100%;box-shadow:0 2px 4px rgba(62,50,40,0.05)}}
+.info-box h4{{color:{TEXT_BRAUN};margin-top:0;margin-bottom:8px;font-size:1.1rem}}
+.info-box p{{color:#5C4D40;font-size:0.95rem;line-height:1.5;margin:0}}
+.ueber-mich{{background:{HELL_CREME};border-left:6px solid {HAUPT_BEIGE};padding:22px 26px;border-radius:8px;margin-top:20px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}}
+.ueber-mich img{{width:135px;height:135px;object-fit:cover;object-position:center top;border-radius:50%;border:4px solid {AKZENT_SAND};flex-shrink:0}}
+.ueber-mich-text{{flex:1;min-width:260px}}
+.ueber-mich h3{{margin-top:0;color:{TEXT_BRAUN}}}
+.ueber-mich p{{color:#4A3D32;font-size:0.96rem;line-height:1.6;margin-bottom:8px}}
+[data-testid="stTable"] th{{background:{HAUPT_BEIGE}!important;color:#fff!important}}
+h3{{color:{TEXT_BRAUN}}}
 </style>""", unsafe_allow_html=True)
 
 logo = Path(__file__).with_name("logo.png")
@@ -43,6 +49,17 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True
 )
+
+
+def lade_profilbild_html():
+    """Lädt profil.jpg (oder profil.png) als Base64-Bild für die Über-mich-Karte."""
+    for dateiname in ["profil.jpg", "profil.jpeg", "profil.png"]:
+        pfad = Path(__file__).with_name(dateiname)
+        if pfad.exists():
+            mime = "image/png" if pfad.suffix.lower() == ".png" else "image/jpeg"
+            b64 = base64.b64encode(pfad.read_bytes()).decode("utf-8")
+            return f'<img src="data:{mime};base64,{b64}" alt="Kathrin Wozniak" />'
+    return ""
 
 
 def berechne_wand(wand, settings, skala):
@@ -278,18 +295,22 @@ if not datei:
         "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser und laden Sie unten den fertigen **Excel-Bericht** herunter."
     )
 
-    # Bereich "Über mich"
+    # Bereich "Über mich" mit rundem Portraitfoto
+    profil_html = lade_profilbild_html()
     st.markdown(
-        '<div class="ueber-mich">'
-        '<h3>Über mich & das Projekt</h3>'
-        '<p><strong>Entwickelt von Kathrin Wozniak</strong> – Architektin mit Fokus auf Bestandsmodernisierung und OpenBIM im Wohnungsbau.</p>'
-        '<p>In der täglichen Planungspraxis liegen Bestandsgebäude heute oft als IFC-Modelle vor, '
-        'doch für schnelle Wirtschaftlichkeits- und Sanierungsbetrachtungen fehlen häufig passgenaue, '
-        'unkomplizierte Auswertungswerkzeuge ohne komplexe Spezialsoftware. '
-        'Aus diesem Bedarf heraus – und im Rahmen meiner Weiterbildung im Bereich <strong>BIM (Building Information Modeling)</strong> – '
-        'ist <em>bauteilauswertung-ifc</em> entstanden: ein praxisnahes Werkzeug aus der Architektur für die Architektur, '
-        'das offene Gebäudedaten direkt im Browser nutzbar macht.</p>'
-        '</div>',
+        f'<div class="ueber-mich">'
+        f'{profil_html}'
+        f'<div class="ueber-mich-text">'
+        f'<h3>Über mich & das Projekt</h3>'
+        f'<p><strong>Entwickelt von Kathrin Wozniak</strong> – Architektin mit Fokus auf Bestandsmodernisierung und OpenBIM im Wohnungsbau.</p>'
+        f'<p>In der täglichen Planungspraxis liegen Bestandsgebäude heute oft als IFC-Modelle vor, '
+        f'doch für schnelle Wirtschaftlichkeits- und Sanierungsbetrachtungen fehlen häufig passgenaue, '
+        f'unkomplizierte Auswertungswerkzeuge ohne komplexe Spezialsoftware. '
+        f'Aus diesem Bedarf heraus – und im Rahmen meiner Weiterbildung im Bereich <strong>BIM (Building Information Modeling)</strong> – '
+        f'ist <em>bauteilauswertung-ifc</em> entstanden: ein praxisnahes Werkzeug aus der Architektur für die Architektur, '
+        f'das offene Gebäudedaten direkt im Browser nutzbar macht.</p>'
+        f'</div>'
+        f'</div>',
         unsafe_allow_html=True
     )
     st.stop()
@@ -448,7 +469,7 @@ ergebnis = pd.DataFrame({
 })
 buf = io.BytesIO()
 
-# Strukturierter Excel-Export mit eigenen Reitern im VIVAWEST-Design
+# Strukturierter Excel-Export mit eigenen Reitern im passenden Beige-Design
 sheets = {
     "Ergebnis": ergebnis,
     "Wände Zusammenfassung": zus_waende,
@@ -465,7 +486,7 @@ with pd.ExcelWriter(buf, engine="openpyxl") as w:
         d.to_excel(w, sheet_name=name, index=False)
     for ws in w.book.worksheets:
         for c in ws[1]:
-            c.fill, c.font = PatternFill("solid", fgColor=BLAU[1:]), Font(color="FFFFFF", bold=True)
+            c.fill, c.font = PatternFill("solid", fgColor=HAUPT_BEIGE[1:]), Font(color="FFFFFF", bold=True)
         for col in ws.columns:
             ws.column_dimensions[col[0].column_letter].width = min(60, max(len(str(c.value or "")) for c in col) + 3)
 
