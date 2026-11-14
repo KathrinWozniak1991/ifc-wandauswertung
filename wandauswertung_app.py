@@ -35,6 +35,7 @@ st.markdown(f"""<style>
 .info-box p{{color:#5C4D40;font-size:0.95rem;line-height:1.5;margin:0}}
 .ueber-mich{{background:{HELL_CREME};border-left:6px solid {HAUPT_BEIGE};padding:22px 26px;border-radius:8px;margin-top:20px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}}
 .ueber-mich img{{width:135px;height:135px;object-fit:cover;object-position:center top;border-radius:50%;border:4px solid {AKZENT_SAND};flex-shrink:0}}
+.ueber-mich-platzhalter{{width:135px;height:135px;border-radius:50%;border:4px solid {AKZENT_SAND};background:{HAUPT_BEIGE};color:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:bold;flex-shrink:0}}
 .ueber-mich-text{{flex:1;min-width:260px}}
 .ueber-mich h3{{margin-top:0;color:{TEXT_BRAUN}}}
 .ueber-mich p{{color:#4A3D32;font-size:0.96rem;line-height:1.6;margin-bottom:8px}}
@@ -59,14 +60,27 @@ st.markdown(
 # 2. HILFSFUNKTIONEN (BILDER & 3D-GEOMETRIE-FALLBACKS)
 # ==============================================================================
 def lade_profilbild_html() -> str:
-    """Lädt profil.jpg (oder profil.png) als Base64-Bild für die Über-mich-Karte."""
-    for dateiname in ["profil.jpg", "profil.jpeg", "profil.png", "profil.JPG"]:
-        pfad = Path(__file__).with_name(dateiname)
-        if pfad.exists():
-            mime = "image/png" if pfad.suffix.lower() == ".png" else "image/jpeg"
-            b64 = base64.b64encode(pfad.read_bytes()).decode("utf-8")
+    """
+    Sucht unabhängig von Groß-/Kleinschreibung nach einer Profilbild-Datei
+    im Projektordner (z. B. profil.jpg, profil.JPG, profil.png) und bettet sie
+    als Base64-Bild ein. Zeigt 'KW' im Kreis, falls noch keine Datei auf dem Server liegt.
+    """
+    basis_ordner = Path(__file__).resolve().parent
+    erlaubte_endungen = {".jpg", ".jpeg", ".png", ".webp"}
+
+    for datei in sorted(basis_ordner.iterdir()):
+        if (
+            datei.is_file()
+            and "profil" in datei.stem.lower()
+            and datei.suffix.lower() in erlaubte_endungen
+            and datei.stat().st_size > 0
+        ):
+            endung = datei.suffix.lower()
+            mime = "image/png" if endung == ".png" else ("image/webp" if endung == ".webp" else "image/jpeg")
+            b64 = base64.b64encode(datei.read_bytes()).decode("utf-8")
             return f'<img src="data:{mime};base64,{b64}" alt="Kathrin Wozniak" />'
-    return ""
+
+    return '<div class="ueber-mich-platzhalter">KW</div>'
 
 
 def berechne_wand(wand, settings, skala: float):
@@ -132,17 +146,13 @@ def berechne_laenge_3d(bauteil, settings, modus: str = "horizontal"):
     """
     Fallback für Geländer, Regenrinnen und Fallrohre:
     Schätzt die Bauteillänge aus der 3D-Ausdehnung (Bounding Box) in Metern.
-    modus:
-      - 'horizontal': größere Ausdehnung in X oder Y (für Regenrinnen / gerade Geländer)
-      - 'diagonal': 3D-Diagonale inkl. Z (für schräge Treppengeländer)
-      - 'vertikal': Höhe in Z-Richtung (für Fallrohre)
     """
     try:
         geom = ifcopenshell.geom.create_shape(settings, bauteil).geometry
         verts = np.array(geom.verts).reshape(-1, 3)
         if len(verts) == 0:
             return None
-        ausdehnung = verts.max(axis=0) - verts.min(axis=0)  # [dx, dy, dz] in Metern
+        ausdehnung = verts.max(axis=0) - verts.min(axis=0)
         dx, dy, dz = float(ausdehnung[0]), float(ausdehnung[1]), float(ausdehnung[2])
 
         if modus == "vertikal":
@@ -158,13 +168,12 @@ def berechne_laenge_3d(bauteil, settings, modus: str = "horizontal"):
 
 def hole_laenge_aus_psets(ps: dict, skala: float):
     """Sucht in allen PropertySets nach typischen Längen-Eigenschaften."""
-    for pset_name, props in ps.items():
+    for _, props in ps.items():
         if not isinstance(props, dict):
             continue
         for key in ["Length", "NetLength", "GrossLength", "NominalLength", "Länge"]:
             val = props.get(key)
             if isinstance(val, (int, float)) and val > 0:
-                # Falls Wert > 100, ist er oft noch in Millimetern gespeichert
                 return val * skala if val > 100 else float(val)
     return None
 
@@ -199,12 +208,18 @@ def auswerten(daten: bytes, rechnen: bool):
                 fl = berechne_wand(w, settings, skala)
                 herkunft = "berechnet" if fl is not None else "fehlt"
 
+        wand_name = w.Name or ""
+        ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True
+        # Fallback für Revit-Exporte ohne IsExternal: Typische Außenwand-Begriffe prüfen
+        if not ist_aussen and any(k in wand_name.lower() for k in ["fassade", "aussen", "außen", "exterior", "sockel"]):
+            ist_aussen = True
+
         g = el.get_container(w)
         zeilen_waende.append({
-            "Name": w.Name or "",
+            "Name": wand_name,
             "GlobalId": w.GlobalId,
             "Geschoss": g.Name if g else "ohne Geschoss",
-            "ist_aussen": ps.get("Pset_WallCommon", {}).get("IsExternal") is True,
+            "ist_aussen": ist_aussen,
             "Fläche": fl,
             "Herkunft": herkunft
         })
@@ -259,12 +274,29 @@ def auswerten(daten: bytes, rechnen: bool):
         typ_obj = el.get_type(t)
         typ_name = typ_obj.Name if typ_obj and typ_obj.Name else ""
 
+        # Außenlage prüfen (direktes Property + Fallback über Mutterwand)
+        ist_aussen = ps.get("Pset_DoorCommon", {}).get("IsExternal") is True
+        wand_name = ""
+        try:
+            for rel in getattr(t, "FillsVoids", []):
+                wand = rel.RelatingBuildingElement
+                if wand:
+                    wand_name = wand.Name or ""
+                    wand_ps = el.get_psets(wand)
+                    if wand_ps.get("Pset_WallCommon", {}).get("IsExternal") is True:
+                        ist_aussen = True
+                    if any(k in wand_name.lower() for k in ["fassade", "aussen", "außen", "exterior", "sockel"]):
+                        ist_aussen = True
+        except Exception:
+            pass
+
         zeilen_tueren.append({
             "Name": t.Name or "Tür",
             "Typ": typ_name,
+            "Mutterwand": wand_name,
             "GlobalId": t.GlobalId,
             "Geschoss": g.Name if g else "ohne Geschoss",
-            "ist_aussen": ps.get("Pset_DoorCommon", {}).get("IsExternal") is True,
+            "ist_aussen": ist_aussen,
             "Breite (m)": round(b, 3) if isinstance(b, (int, float)) else None,
             "Höhe (m)": round(h, 3) if isinstance(h, (int, float)) else None,
             "Fläche (m²)": fl
@@ -335,7 +367,6 @@ def auswerten(daten: bytes, rechnen: bool):
         name_str = r.Name or "Geländer"
         suchtext = f"{name_str} {predef}".lower()
 
-        # Einordnung: Treppengeländer vs. Absturzgeländer an Fenstern
         if predef == "STAIR" or any(k in suchtext for k in ["treppe", "stair", "handlauf"]):
             gelaender_art = "Treppengeländer"
             geo_modus = "diagonal"
@@ -381,7 +412,6 @@ def auswerten(daten: bytes, rechnen: bool):
         typ_name = typ_obj.Name if typ_obj and typ_obj.Name else ""
         suchtext = f"{name_str} {typ_name} {predef}".lower()
 
-        # Prüfen, ob es sich um Dachentwässerung handelt (Rinne oder Fallrohr)
         ist_rinne = predef == "GUTTER" or any(k in suchtext for k in ["rinne", "dachrinne", "gutter", "kastenrinne", "halbrund"])
         ist_fallrohr = predef == "DOWNPIPE" or any(k in suchtext for k in ["fallrohr", "regenrohr", "downpipe", "rainwater"])
 
@@ -707,9 +737,9 @@ detail_fenster = (
     else pd.DataFrame(columns=["Name", "GlobalId", "Geschoss", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"])
 )
 detail_tueren = (
-    df_tueren[["Name", "Typ", "GlobalId", "Geschoss", "Türart", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"]]
+    df_tueren[["Name", "Typ", "Mutterwand", "GlobalId", "Geschoss", "Türart", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"]]
     if not df_tueren.empty
-    else pd.DataFrame(columns=["Name", "Typ", "GlobalId", "Geschoss", "Türart", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"])
+    else pd.DataFrame(columns=["Name", "Typ", "Mutterwand", "GlobalId", "Geschoss", "Türart", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"])
 )
 detail_daecher = (
     df_daecher[["Name", "IFC-Klasse", "GlobalId", "Geschoss", "Dachform", "Neigung (°)", "Fläche (m²)", "Herkunft"]]
