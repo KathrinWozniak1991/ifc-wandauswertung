@@ -20,27 +20,28 @@ from openpyxl.styles import Font, PatternFill
 # Schalter für den Serverstandort-Hinweis (True = Serverstandort Deutschland aktiv)
 HOSTING_IN_DEUTSCHLAND = True
 
-# Futuristische OpenBIM Dark-Tech Farbpalette (inspiriert von High-Tech BIM & CAD)
+# Futuristische OpenBIM Dark-Tech Farbpalette
 BG_TIEFBLAU     = "#060E1B"   # Haupthintergrund (Deep Space Navy)
 BG_PANEL        = "#0D1B30"   # Seitenleiste & Karten-Basis
 AKZENT_CYAN     = "#00D4FF"   # Leuchtendes Cyan für Fokus, Rahmen & Kennzahlen
-AKZENT_KOBALT   = "#1D4ED8"   # Technisches Kobaltblau
-AKZENT_AMBER    = "#F59E0B"   # Signal-Amber/Gold für CAD-Kontraste & Warnungen
+AKZENT_KOBALT   = "#2563EB"   # Technisches Kobaltblau
+AKZENT_AMBER    = "#F59E0B"   # Signal-Amber/Gold für Kontraste & Warnungen
 TEXT_HELL       = "#E6F1FF"   # Kühles Eisweiß für optimale Lesbarkeit
-TEXT_GEDÄMPFT   = "#94A3B8"   # Blaugrau für Untertitel & Beschreibungen
+TEXT_GEDAEMPFT  = "#94A3B8"   # Blaugrau für Untertitel & Beschreibungen
 EXCEL_HEADER    = "0D254C"    # Tiefblau für Excel-Tabellenköpfe
 
-# CAD-Tragwerks- & OpenBIM-Farbschema für die 3D-Gebäudevorschau (Dark Viewport)
+# Blickdichte Architektur- & CAD-Farben für die 3D-Gebäudevorschau (deckkraft = 1.00 = nicht durchsichtig!)
 BIM_FARBEN = {
-    "Außenwände & Fassade":         {"farbe": "#60A5FA", "deckkraft": 0.92, "standard_an": True},
-    "Sockel (oberirdisch)":         {"farbe": "#1D4ED8", "deckkraft": 1.00, "standard_an": True},
-    "Fundament & Erdreich-Sockel":  {"farbe": "#334155", "deckkraft": 1.00, "standard_an": True},
-    "Innenwände":                   {"farbe": "#475569", "deckkraft": 0.55, "standard_an": False},
-    "Dachflächen":                  {"farbe": "#EA580C", "deckkraft": 0.95, "standard_an": True},
-    "Fenster":                      {"farbe": "#00D4FF", "deckkraft": 0.42, "standard_an": True},
-    "Türen":                        {"farbe": "#38BDF8", "deckkraft": 0.95, "standard_an": True},
-    "Geländer":                     {"farbe": "#F59E0B", "deckkraft": 1.00, "standard_an": True},
-    "Regenrinnen & Fallrohre":      {"farbe": "#22D3EE", "deckkraft": 1.00, "standard_an": True},
+    "Außenwände & Fassade":         {"farbe": "#E2E8F0", "deckkraft": 1.00, "standard_an": True},
+    "Sockel (oberirdisch)":         {"farbe": "#2563EB", "deckkraft": 1.00, "standard_an": True},
+    "Fundament & Erdreich-Sockel":  {"farbe": "#475569", "deckkraft": 1.00, "standard_an": True},
+    "Geschossdecken":               {"farbe": "#94A3B8", "deckkraft": 1.00, "standard_an": True},
+    "Innenwände":                   {"farbe": "#CBD5E1", "deckkraft": 1.00, "standard_an": False},
+    "Dachflächen":                  {"farbe": "#C85A32", "deckkraft": 1.00, "standard_an": True},
+    "Fenster":                      {"farbe": "#0284C7", "deckkraft": 1.00, "standard_an": True},
+    "Türen":                        {"farbe": "#1E3A8A", "deckkraft": 1.00, "standard_an": True},
+    "Geländer":                     {"farbe": "#D97706", "deckkraft": 1.00, "standard_an": True},
+    "Regenrinnen & Fallrohre":      {"farbe": "#0891B2", "deckkraft": 1.00, "standard_an": True},
 }
 
 st.set_page_config(page_title="bauteilauswertung-ifc // OpenBIM Engine", layout="wide")
@@ -58,15 +59,89 @@ st.markdown(f"""<style>
     color: {TEXT_HELL};
 }}
 [data-testid="stHeader"] {{
-    background: rgba(6, 14, 27, 0.75);
+    background: rgba(6, 14, 27, 0.85);
     backdrop-filter: blur(8px);
 }}
 [data-testid="stSidebar"] {{
     background: linear-gradient(180deg, #091529 0%, #0D1E38 100%);
-    border-right: 1px solid rgba(0, 212, 255, 0.22);
+    border-right: 1px solid rgba(0, 212, 255, 0.25);
 }}
 [data-testid="stSidebar"] * {{
     color: {TEXT_HELL};
+}}
+
+/* File-Uploader & hochgeladene Datei in der Seitenleiste klar lesbar machen */
+[data-testid="stFileUploaderDropzone"] {{
+    background-color: #102544 !important;
+    border: 1.5px dashed {AKZENT_CYAN} !important;
+    border-radius: 10px !important;
+    color: {TEXT_HELL} !important;
+}}
+[data-testid="stFileUploaderDropzone"] * {{
+    color: {TEXT_HELL} !important;
+}}
+[data-testid="stFileUploaderFile"] {{
+    background-color: #132C52 !important;
+    border: 1px solid rgba(0, 212, 255, 0.45) !important;
+    border-radius: 8px !important;
+    padding: 6px 10px !important;
+    color: #FFFFFF !important;
+}}
+[data-testid="stFileUploaderFile"] * {{
+    color: #FFFFFF !important;
+}}
+[data-testid="stFileUploaderFileName"] {{
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+}}
+
+/* Lade-Spinner (st.spinner) mit dunklem Hintergrund & weißer Schrift */
+[data-testid="stSpinner"],
+[data-testid="stSpinner"] > div {{
+    background-color: #0F2544 !important;
+    color: #FFFFFF !important;
+    border: 1px solid rgba(0, 212, 255, 0.45) !important;
+    border-radius: 8px !important;
+    padding: 8px 14px !important;
+}}
+[data-testid="stSpinner"] p,
+[data-testid="stSpinner"] span,
+[data-testid="stSpinner"] div {{
+    color: #FFFFFF !important;
+    font-weight: 500 !important;
+}}
+
+/* Ausklappbare Boxen (st.expander) im Dark-Tech-Stil */
+[data-testid="stExpander"] {{
+    background-color: rgba(13, 27, 48, 0.88) !important;
+    border: 1px solid rgba(0, 212, 255, 0.35) !important;
+    border-radius: 10px !important;
+}}
+[data-testid="stExpander"] details summary,
+[data-testid="stExpander"] summary {{
+    background-color: #102544 !important;
+    color: #FFFFFF !important;
+    border-radius: 9px !important;
+    padding: 10px 14px !important;
+}}
+[data-testid="stExpander"] summary * {{
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+}}
+[data-testid="stExpander"] summary:hover {{
+    background-color: #16335E !important;
+}}
+
+/* Eingabefelder & Multiselects im Dark-Tech-Design */
+[data-baseweb="input"] > div,
+[data-baseweb="select"] > div {{
+    background-color: #102544 !important;
+    border-color: rgba(0, 212, 255, 0.35) !important;
+    color: #FFFFFF !important;
+}}
+[data-baseweb="input"] input,
+[data-baseweb="select"] * {{
+    color: #FFFFFF !important;
 }}
 
 /* Futuristischer Hero-Header */
@@ -107,9 +182,9 @@ st.markdown(f"""<style>
 
 /* Datenschutz- & Sicherheits-Banner (Dark-Tech Emerald/Cyan) */
 .trust-banner {{
-    background: linear-gradient(90deg, rgba(10, 38, 46, 0.88) 0%, rgba(13, 33, 58, 0.88) 100%);
+    background: linear-gradient(90deg, rgba(10, 38, 46, 0.90) 0%, rgba(13, 33, 58, 0.90) 100%);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(16, 185, 129, 0.42);
+    border: 1px solid rgba(16, 185, 129, 0.45);
     border-left: 5px solid #10B981;
     padding: 13px 18px;
     border-radius: 10px;
@@ -131,15 +206,15 @@ st.markdown(f"""<style>
     font-size: 0.84rem;
 }}
 .trust-badge-item {{
-    background: rgba(16, 185, 129, 0.14);
+    background: rgba(16, 185, 129, 0.16);
     color: #A7F3D0;
     padding: 4px 11px;
     border-radius: 5px;
-    border: 1px solid rgba(16, 185, 129, 0.38);
+    border: 1px solid rgba(16, 185, 129, 0.40);
 }}
 .sidebar-trust {{
-    background: rgba(10, 38, 46, 0.78);
-    border: 1px solid rgba(16, 185, 129, 0.38);
+    background: rgba(10, 38, 46, 0.82);
+    border: 1px solid rgba(16, 185, 129, 0.40);
     border-left: 4px solid #10B981;
     padding: 10px 12px;
     border-radius: 8px;
@@ -152,9 +227,9 @@ st.markdown(f"""<style>
 
 /* Glassmorphism Kennzahlen-Karten */
 .karte {{
-    background: linear-gradient(145deg, rgba(15, 34, 64, 0.82), rgba(10, 24, 46, 0.92));
+    background: linear-gradient(145deg, rgba(15, 34, 64, 0.84), rgba(10, 24, 46, 0.94));
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(0, 212, 255, 0.28);
+    border: 1px solid rgba(0, 212, 255, 0.30);
     border-left: 4px solid {AKZENT_CYAN};
     padding: 15px 18px;
     border-radius: 10px;
@@ -164,11 +239,11 @@ st.markdown(f"""<style>
 }}
 .karte:hover {{
     transform: translateY(-2px);
-    border-color: rgba(0, 212, 255, 0.75);
-    box-shadow: 0 6px 24px rgba(0, 212, 255, 0.18);
+    border-color: rgba(0, 212, 255, 0.78);
+    box-shadow: 0 6px 24px rgba(0, 212, 255, 0.20);
 }}
 .karte span {{
-    color: {TEXT_GEDÄMPFT};
+    color: {TEXT_GEDAEMPFT};
     font-size: 0.84rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -176,16 +251,16 @@ st.markdown(f"""<style>
 .karte b {{
     display: block;
     color: #FFFFFF;
-    font-size: 1.55rem;
+    font-size: 1.50rem;
     margin-top: 3px;
     text-shadow: 0 0 12px rgba(0, 212, 255, 0.25);
 }}
 
 /* Glassmorphism Feature-Boxen auf der Startseite */
 .info-box {{
-    background: linear-gradient(160deg, rgba(16, 36, 68, 0.76), rgba(9, 21, 41, 0.90));
+    background: linear-gradient(160deg, rgba(16, 36, 68, 0.78), rgba(9, 21, 41, 0.92));
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(0, 212, 255, 0.25);
+    border: 1px solid rgba(0, 212, 255, 0.28);
     border-top: 3px solid {AKZENT_CYAN};
     padding: 18px 20px;
     border-radius: 10px;
@@ -194,8 +269,8 @@ st.markdown(f"""<style>
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }}
 .info-box:hover {{
-    border-color: rgba(0, 212, 255, 0.65);
-    box-shadow: 0 8px 28px rgba(0, 212, 255, 0.15);
+    border-color: rgba(0, 212, 255, 0.68);
+    box-shadow: 0 8px 28px rgba(0, 212, 255, 0.16);
 }}
 .info-box .modul-nr {{
     font-family: monospace;
@@ -236,9 +311,9 @@ st.markdown(f"""<style>
 
 /* Tabellen, Überschriften & Buttons */
 [data-testid="stTable"] table {{
-    background-color: rgba(13, 27, 48, 0.85) !important;
+    background-color: rgba(13, 27, 48, 0.88) !important;
     color: {TEXT_HELL} !important;
-    border: 1px solid rgba(0, 212, 255, 0.22) !important;
+    border: 1px solid rgba(0, 212, 255, 0.25) !important;
 }}
 [data-testid="stTable"] th {{
     background: linear-gradient(90deg, #0D254C, #13386E) !important;
@@ -348,8 +423,8 @@ def berechne_wand(wand, settings, skala: float):
         return None
 
 
-def berechne_dach_geometrie(bauteil, settings):
-    """Fallback: Ermittelt Dachfläche (Oberseite) und mittlere Neigung aus der 3D-Geometrie."""
+def berechne_horizontale_flaeche(bauteil, settings):
+    """Fallback: Ermittelt horizontale bzw. geneigte Oberseite und mittlere Neigung aus der 3D-Geometrie (für Dächer & Decken)."""
     try:
         geom = ifcopenshell.geom.create_shape(settings, bauteil).geometry
         verts = np.array(geom.verts).reshape(-1, 3)
@@ -439,7 +514,7 @@ def _hole_suchtext_bauteil(bauteil) -> str:
     return " ".join(teile).lower()
 
 
-@st.cache_data(show_spinner="3D-CAD-Geometrie wird für den Viewport aufbereitet …")
+@st.cache_data(show_spinner="3D-Gebäudemodell wird erstellt …")
 def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
     """
     Erzeugt pro BIM-Bauteilgruppe ein kombiniertes Dreiecksnetz (Vertices + Faces)
@@ -543,6 +618,7 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
         teile = el.get_parts(r)
         dach_liste.extend(teile if teile else [r])
 
+    # Decken & Dächer (IfcSlab) sauber aufteilen: Dach vs. Bodenplatte/Keller vs. Geschossdecken
     for s in m.by_type("IfcSlab"):
         predef = (getattr(s, "PredefinedType", None) or "").upper()
         suchtext = _hole_suchtext_bauteil(s)
@@ -555,9 +631,11 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
         elif (
             predef == "BASESLAB"
             or any(k in suchtext for k in ["bodenplatte", "fundament", "sohle", "gründung", "kellerboden"])
-            or any(k in geschoss_name for k in erdreich_gesch_kw)
+            or any(k in geschoss_name for k in ["foundation", "fundament", "gründung"])
         ):
             fuege_bauteil_hinzu(s, "Fundament & Erdreich-Sockel")
+        else:
+            fuege_bauteil_hinzu(s, "Geschossdecken")
 
     for d in dach_liste:
         fuege_bauteil_hinzu(d, "Dachflächen")
@@ -599,7 +677,7 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
 # ==============================================================================
 # 3. HAUPTAUSWERTUNG DER IFC-DATEI
 # ==============================================================================
-@st.cache_data(show_spinner="IFC-Modell wird analysiert … (Wände, Fenster, Türen, Dächer, Geländer & Entwässerung)")
+@st.cache_data(show_spinner="IFC-Modell wird analysiert … (Wände, Decken, Fenster, Türen, Dächer & Geländer)")
 def auswerten(daten: bytes, rechnen: bool):
     """
     Liest das hochgeladene IFC-Modell flüchtig ein und löscht die temporäre
@@ -689,7 +767,7 @@ def auswerten(daten: bytes, rechnen: bool):
         if b is None and isinstance(q.get("Width"), (int, float)):
             b = q["Width"] * skala if q["Width"] > 50 else q["Width"]
         if h is None and isinstance(q.get("Height"), (int, float)):
-            h = q["Height"] * skala if isinstance(h, (int, float)) else None
+            h = q["Height"] * skala if q["Height"] > 50 else q["Height"]
 
         fl = q.get("Area") if isinstance(q.get("Area"), (int, float)) else ((b * h) if (b and h) else None)
         g = el.get_container(t)
@@ -738,7 +816,7 @@ def auswerten(daten: bytes, rechnen: bool):
                 dach_kandidaten.append(r)
 
     for s in m.by_type("IfcSlab"):
-        if getattr(s, "PredefinedType", None) == "ROOF" and s not in dach_kandidaten:
+        if (getattr(s, "PredefinedType", None) or "").upper() == "ROOF" and s not in dach_kandidaten:
             dach_kandidaten.append(s)
 
     for d in dach_kandidaten:
@@ -756,7 +834,7 @@ def auswerten(daten: bytes, rechnen: bool):
         neigung = pset_common.get("PitchAngle")
 
         if (fl is None or neigung is None) and rechnen:
-            fl_geo, neig_geo = berechne_dach_geometrie(d, settings)
+            fl_geo, neig_geo = berechne_horizontale_flaeche(d, settings)
             if fl is None and fl_geo is not None:
                 fl = fl_geo
                 herkunft = "berechnet"
@@ -776,6 +854,48 @@ def auswerten(daten: bytes, rechnen: bool):
             "Geschoss": g.Name if g else "ohne Geschoss",
             "Dachform": dachform,
             "Neigung (°)": round(neigung, 1) if isinstance(neigung, (int, float)) else None,
+            "Fläche (m²)": fl,
+            "Herkunft": herkunft
+        })
+
+    # --- 4B. Geschossdecken & Bodenplatten auswerten (IfcSlab ohne Dächer) ---
+    zeilen_decken = []
+    for s in m.by_type("IfcSlab"):
+        predef = (getattr(s, "PredefinedType", None) or "").upper()
+        if predef == "ROOF" or s in dach_kandidaten:
+            continue
+
+        ps = el.get_psets(s)
+        q = ps.get("Qto_SlabBaseQuantities") or ps.get("BaseQuantities") or {}
+        fl = q.get("NetArea") if isinstance(q.get("NetArea"), (int, float)) else q.get("GrossArea")
+        herkunft = "Modell" if isinstance(fl, (int, float)) else "fehlt"
+
+        if fl is None and rechnen:
+            fl_geo, _ = berechne_horizontale_flaeche(s, settings)
+            if fl_geo is not None:
+                fl = fl_geo
+                herkunft = "berechnet"
+
+        g = el.get_container(s)
+        geschoss_name = g.Name if g else "ohne Geschoss"
+        suchtext_decke = f"{_hole_suchtext_bauteil(s)} {geschoss_name} {predef}".lower()
+
+        # Einordnung für Sanierung & DIN 276 (KG 320 Bodenplatte/Keller vs. KG 350 Geschossdecken/OGD)
+        if (
+            predef == "BASESLAB"
+            or any(k in suchtext_decke for k in ["bodenplatte", "fundament", "sohle", "gründung", "kellerboden", "foundation", "basement", "keller", "ug"])
+        ):
+            deckenart = "Bodenplatte / Kellerdecke"
+        elif any(k in suchtext_decke for k in ["oberste", "dachboden", "spitzboden", "kehlbalken", "attic", "dachgeschoss", "dg"]):
+            deckenart = "Oberste Geschossdecke"
+        else:
+            deckenart = "Geschossdecke"
+
+        zeilen_decken.append({
+            "Name": s.Name or "Decke",
+            "GlobalId": s.GlobalId,
+            "Geschoss": geschoss_name,
+            "Deckenart": deckenart,
             "Fläche (m²)": fl,
             "Herkunft": herkunft
         })
@@ -865,6 +985,7 @@ def auswerten(daten: bytes, rechnen: bool):
         pd.DataFrame(zeilen_fenster),
         pd.DataFrame(zeilen_tueren),
         pd.DataFrame(zeilen_daecher),
+        pd.DataFrame(zeilen_decken),
         pd.DataFrame(zeilen_gelaender),
         pd.DataFrame(zeilen_entwaesserung)
     )
@@ -905,7 +1026,7 @@ if not datei:
             '<div class="info-box">'
             '<div class="modul-nr">MODUL 01 // QUANTITY TAKE-OFF</div>'
             '<h4>Automatisierte Mengen</h4>'
-            '<p>Fassaden-, Sockel-, Fenster-, Tür- und Dachflächen sowie Geländer- und Rinnenlängen '
+            '<p>Fassaden-, Sockel-, Decken-, Fenster-, Tür- und Dachflächen sowie Geländer- und Rinnenlängen '
             'werden direkt aus der IFC-Datenstruktur extrahiert – ohne manuelles Nachmessen.</p>'
             '</div>',
             unsafe_allow_html=True
@@ -1007,7 +1128,7 @@ if not datei:
 # 5. FILTER, KATEGORISIERUNG & KENNZAHLEN
 # ==============================================================================
 ifc_bytes = datei.getvalue()
-df_waende, df_fenster, df_tueren, df_daecher, df_gelaender, df_entwaesserung = auswerten(ifc_bytes, rechnen)
+df_waende, df_fenster, df_tueren, df_daecher, df_decken, df_gelaender, df_entwaesserung = auswerten(ifc_bytes, rechnen)
 geschosse_waende = sorted(df_waende["Geschoss"].unique()) if not df_waende.empty else []
 
 with st.sidebar:
@@ -1079,6 +1200,7 @@ fassade = df_waende.loc[df_waende.Kategorie == "Außenwand Fassade"]
 sockel = df_waende.loc[(df_waende.Kategorie == "Sockel (oberirdisch)") & df_waende.Sockelmaterial.isin(sock_mat)]
 
 dach_gesamt = df_daecher["Fläche (m²)"].sum() if not df_daecher.empty else 0.0
+decken_gesamt = df_decken["Fläche (m²)"].sum() if not df_decken.empty else 0.0
 fenster_gesamt = df_fenster["Fläche (m²)"].sum() if not df_fenster.empty else 0.0
 tueren_anzahl = len(df_tueren)
 gelaender_gesamt = df_gelaender["Länge (m)"].sum() if not df_gelaender.empty else 0.0
@@ -1091,11 +1213,11 @@ fallrohre_gesamt = (
     if not df_entwaesserung.empty else 0.0
 )
 
-# Kennzahlen-Karten in 2 Reihen à 3 Spalten
+# Kennzahlen-Karten in 2 Reihen à 3 Spalten (inkl. Geschossdecken)
 k1, k2, k3 = st.columns(3)
 k1.markdown(f'<div class="karte"><span>Fassadendämmung (netto)</span><b>{fassade.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
 k2.markdown(f'<div class="karte"><span>Sockeldämmung (netto)</span><b>{sockel.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
-k3.markdown(f'<div class="karte"><span>Dachfläche ({len(df_daecher)} Teilfl.)</span><b>{dach_gesamt:,.1f} m²</b></div>', unsafe_allow_html=True)
+k3.markdown(f'<div class="karte"><span>Dach ({len(df_daecher)}) &amp; Decken ({len(df_decken)})</span><b>{dach_gesamt:,.1f} m² | {decken_gesamt:,.1f} m²</b></div>', unsafe_allow_html=True)
 
 k4, k5, k6 = st.columns(3)
 k4.markdown(f'<div class="karte"><span>Fenster ({len(df_fenster)} Stk.) &amp; Türen ({tueren_anzahl} Stk.)</span><b>{fenster_gesamt:,.1f} m² | {tueren_anzahl} Türen</b></div>', unsafe_allow_html=True)
@@ -1108,6 +1230,7 @@ if fehlt:
 if (
     (df_waende.Herkunft == "berechnet").any()
     or (not df_daecher.empty and (df_daecher.Herkunft == "berechnet").any())
+    or (not df_decken.empty and (df_decken.Herkunft == "berechnet").any())
     or (not df_gelaender.empty and (df_gelaender.Herkunft == "berechnet").any())
     or (not df_entwaesserung.empty and (df_entwaesserung.Herkunft == "berechnet").any())
 ):
@@ -1115,9 +1238,9 @@ if (
 
 
 # ==============================================================================
-# 5B. INTERAKTIVE 3D-GEBÄUDEVORSCHAU (DARK-TECH CAD-VIEWPORT)
+# 5B. INTERAKTIVE 3D-GEBÄUDEVORSCHAU (HELLER STUDIO-VIEWPORT & BLICKDICHTES HAUS)
 # ==============================================================================
-with st.expander("Interaktiver 3D-CAD-Viewport (OpenBIM-Modell)", expanded=True):
+with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=True):
     meshes_3d, dreiecke_anzahl, modell_gekurzt = extrahiere_3d_meshes(ifc_bytes)
 
     if not meshes_3d:
@@ -1125,7 +1248,7 @@ with st.expander("Interaktiver 3D-CAD-Viewport (OpenBIM-Modell)", expanded=True)
     else:
         st.caption(
             "Steuerung: Linke Maustaste = Drehen | Rechte Maustaste = Verschieben | Mausrad = Zoomen. "
-            "Bauteilgruppen im CAD-Layer-Manager ein- oder ausblenden:"
+            "Bauteilgruppen im Layer-Manager ein- oder ausblenden:"
         )
 
         gruppen_namen = list(BIM_FARBEN.keys())
@@ -1157,50 +1280,54 @@ with st.expander("Interaktiver 3D-CAD-Viewport (OpenBIM-Modell)", expanded=True)
                 j=faces[:, 1],
                 k=faces[:, 2],
                 color=stil["farbe"],
-                opacity=stil["deckkraft"],
+                opacity=1.0,  # Komplett blickdicht (keine durchscheinenden Innenwände)
                 name=f"{gruppe} ({meshes_3d[gruppe]['bauteile']})",
                 showlegend=True,
                 flatshading=True,
-                lighting=dict(ambient=0.55, diffuse=0.90, roughness=0.4, specular=0.35),
+                lighting=dict(ambient=0.62, diffuse=0.88, roughness=0.45, specular=0.25),
                 hovertemplate=f"<b>{gruppe}</b><br>X: %{{x:.2f}} m<br>Y: %{{y:.2f}} m<br>Z: %{{z:.2f}} m<extra></extra>",
             ))
 
         fig_3d.update_layout(
             height=620,
             margin=dict(l=0, r=0, t=10, b=0),
-            paper_bgcolor="#07101F",
-            font=dict(color=TEXT_HELL),
+            paper_bgcolor="#E4EDF7",
+            font=dict(color="#0F172A"),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
                 y=1.01,
                 xanchor="left",
                 x=0,
-                bgcolor="rgba(13, 27, 48, 0.85)",
-                bordercolor="rgba(0, 212, 255, 0.35)",
-                borderwidth=1
+                bgcolor="rgba(255, 255, 255, 0.92)",
+                bordercolor="#94A3B8",
+                borderwidth=1,
+                font=dict(color="#0F172A")
             ),
             scene=dict(
                 aspectmode="data",
                 xaxis=dict(
                     title="X (m)",
-                    backgroundcolor="#0A172B",
-                    gridcolor="#1E3A5F",
-                    zerolinecolor=AKZENT_CYAN,
+                    backgroundcolor="#D5E2F0",
+                    gridcolor="#B4C6DC",
+                    zerolinecolor="#0284C7",
+                    color="#0F172A",
                     showbackground=True
                 ),
                 yaxis=dict(
                     title="Y (m)",
-                    backgroundcolor="#0A172B",
-                    gridcolor="#1E3A5F",
-                    zerolinecolor=AKZENT_CYAN,
+                    backgroundcolor="#D5E2F0",
+                    gridcolor="#B4C6DC",
+                    zerolinecolor="#0284C7",
+                    color="#0F172A",
                     showbackground=True
                 ),
                 zaxis=dict(
                     title="Höhe Z (m)",
-                    backgroundcolor="#0D1F38",
-                    gridcolor="#1E3A5F",
-                    zerolinecolor=AKZENT_CYAN,
+                    backgroundcolor="#C7D7EA",
+                    gridcolor="#B4C6DC",
+                    zerolinecolor="#0284C7",
+                    color="#0F172A",
                     showbackground=True
                 ),
                 camera=dict(eye=dict(x=1.45, y=-1.45, z=0.85)),
@@ -1245,14 +1372,33 @@ else:
     laenge_absturz_gelaender = 0.0
     laenge_treppen_gelaender = 0.0
 
+# Deckenflächen nach DIN 276 aufteilen (KG 320 vs. KG 350)
+if not df_decken.empty:
+    flaeche_bodenplatte_kg320 = float(
+        df_decken.loc[df_decken["Deckenart"] == "Bodenplatte / Kellerdecke", "Fläche (m²)"].sum()
+    )
+    flaeche_geschossdecken_kg350 = float(
+        df_decken.loc[df_decken["Deckenart"] == "Geschossdecke", "Fläche (m²)"].sum()
+    )
+    flaeche_ogd_kg350 = float(
+        df_decken.loc[df_decken["Deckenart"] == "Oberste Geschossdecke", "Fläche (m²)"].sum()
+    )
+else:
+    flaeche_bodenplatte_kg320 = 0.0
+    flaeche_geschossdecken_kg350 = 0.0
+    flaeche_ogd_kg350 = 0.0
+
 din276_positionen = [
     ("KG 320 – Gründung, Unterbau", "Sockeldämmung (Perimeter / Spritzwasser)", round(float(sockel.Fläche.sum()), 1), "m²"),
+    ("KG 320 – Gründung, Unterbau", "Bodenplatte / Kellerdecke (Dämmung / Sanierung)", round(flaeche_bodenplatte_kg320, 1), "m²"),
     ("KG 330 – Außenwände / Vertikale Baukonstruktionen, außen", "Fassadendämmung (WDVS / Außenwand)", round(float(fassade.Fläche.sum()), 1), "m²"),
     ("KG 330 – Außenwände / Vertikale Baukonstruktionen, außen", "Fenster (Austausch inkl. Montage)", round(float(fenster_gesamt), 1), "m²"),
     ("KG 330 – Außenwände / Vertikale Baukonstruktionen, außen", "Außentüren (Haus- & Kelleraußentüren)", float(anzahl_aussentueren), "Stk."),
     ("KG 330 – Außenwände / Vertikale Baukonstruktionen, außen", "Absturzgeländer (Fenster / Balkon)", round(laenge_absturz_gelaender, 1), "m"),
     ("KG 340 – Innenwände / Vertikale Baukonstruktionen, innen", "Innentüren (Wohnung / Keller / DG)", float(anzahl_innentueren), "Stk."),
     ("KG 340 – Innenwände / Vertikale Baukonstruktionen, innen", "Treppengeländer / Handläufe", round(laenge_treppen_gelaender, 1), "m"),
+    ("KG 350 – Decken / Horizontale Baukonstruktionen", "Geschossdecken (Belag / Trittschall / Sanierung)", round(flaeche_geschossdecken_kg350, 1), "m²"),
+    ("KG 350 – Decken / Horizontale Baukonstruktionen", "Oberste Geschossdecke (Wärmedämmung)", round(flaeche_ogd_kg350, 1), "m²"),
     ("KG 360 – Dächer", "Dachfläche (Dämmung & Neueindeckung)", round(float(dach_gesamt), 1), "m²"),
     ("KG 360 – Dächer", "Regenrinnen", round(float(rinnen_gesamt), 1), "m"),
     ("KG 360 – Dächer", "Fallrohre", round(float(fallrohre_gesamt), 1), "m"),
@@ -1404,6 +1550,15 @@ geo_waende = geo_waende.rename(columns={
     "Fläche_außen": "Fläche außen (m²)"
 }).reset_index()
 
+if not df_decken.empty:
+    zus_decken = df_decken.groupby(["Geschoss", "Deckenart"]).agg(
+        Anzahl=("Name", "size"),
+        Fläche=("Fläche (m²)", "sum")
+    ).reset_index().rename(columns={"Fläche": "Fläche (m²)"})
+    zus_decken.loc[len(zus_decken)] = ["Gesamt", "Alle Decken", zus_decken["Anzahl"].sum(), zus_decken["Fläche (m²)"].sum()]
+else:
+    zus_decken = pd.DataFrame(columns=["Geschoss", "Deckenart", "Anzahl", "Fläche (m²)"])
+
 if not df_fenster.empty:
     zus_fenster = df_fenster.groupby("Geschoss").agg(
         Anzahl=("Name", "size"),
@@ -1461,6 +1616,11 @@ else:
     zus_entwaesserung = pd.DataFrame(columns=["Bauteilart", "Anzahl", "Länge (m)"])
 
 detail_waende = df_waende[["Name", "GlobalId", "Geschoss", "Kategorie", "Fläche", "Herkunft"]].rename(columns={"Fläche": "Fläche (m²)"})
+detail_decken = (
+    df_decken[["Name", "GlobalId", "Geschoss", "Deckenart", "Fläche (m²)", "Herkunft"]]
+    if not df_decken.empty
+    else pd.DataFrame(columns=["Name", "GlobalId", "Geschoss", "Deckenart", "Fläche (m²)", "Herkunft"])
+)
 detail_fenster = (
     df_fenster[["Name", "GlobalId", "Geschoss", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"]]
     if not df_fenster.empty
@@ -1495,6 +1655,12 @@ st.table(fmt(zus_waende))
 st.markdown("### Wände: Pro Geschoss")
 st.table(fmt(geo_waende))
 
+st.markdown("### Decken & Bodenplatten: Zusammenfassung")
+if not zus_decken.empty:
+    st.table(fmt(zus_decken))
+else:
+    st.info("Keine Geschossdecken oder Bodenplatten (IfcSlab) im Modell gefunden.")
+
 st.markdown("### Fenster: Zusammenfassung pro Geschoss")
 if not zus_fenster.empty:
     st.table(fmt(zus_fenster))
@@ -1527,6 +1693,8 @@ else:
 
 with st.expander("Alle Wände einzeln"):
     st.dataframe(detail_waende, width="stretch", hide_index=True)
+with st.expander("Alle Decken & Bodenplatten einzeln"):
+    st.dataframe(detail_decken, width="stretch", hide_index=True)
 with st.expander("Alle Fenster einzeln"):
     st.dataframe(detail_fenster, width="stretch", hide_index=True)
 with st.expander("Alle Türen einzeln"):
@@ -1542,6 +1710,7 @@ ergebnis = pd.DataFrame({
     "Ergebnis": [
         "Fassadendämmung netto (m²)",
         "Sockeldämmung netto (m²)",
+        "Decken & Bodenplatten gesamt (m²)",
         "Fensterfläche gesamt (m²)",
         "Türen gesamt (Anzahl)",
         "Dachfläche gesamt (m²)",
@@ -1553,6 +1722,7 @@ ergebnis = pd.DataFrame({
     "Wert": [
         round(fassade.Fläche.sum(), 1),
         round(sockel.Fläche.sum(), 1),
+        round(decken_gesamt, 1),
         round(fenster_gesamt, 1),
         int(tueren_anzahl),
         round(dach_gesamt, 1),
@@ -1570,12 +1740,14 @@ sheets = {
     "DIN 276 Summen": zus_din276_kg,
     "Wände Zusammenfassung": zus_waende,
     "Wände pro Geschoss": geo_waende,
+    "Decken Zusammenfassung": zus_decken,
     "Fenster Zusammenfassung": zus_fenster,
     "Türen Zusammenfassung": zus_tueren,
     "Dächer Zusammenfassung": zus_daecher,
     "Geländer Zusammenfassung": zus_gelaender,
     "Rinnen & Fallrohre": zus_entwaesserung,
     "Alle Wände": detail_waende,
+    "Alle Decken": detail_decken,
     "Alle Fenster": detail_fenster,
     "Alle Türen": detail_tueren,
     "Alle Dächer": detail_daecher,
