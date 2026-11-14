@@ -60,7 +60,7 @@ st.markdown(
 # ==============================================================================
 def lade_profilbild_html() -> str:
     """Lädt profil.jpg (oder profil.png) als Base64-Bild für die Über-mich-Karte."""
-    for dateiname in ["profil.jpg", "profil.jpeg", "profil.png"]:
+    for dateiname in ["profil.jpg", "profil.jpeg", "profil.png", "profil.JPG"]:
         pfad = Path(__file__).with_name(dateiname)
         if pfad.exists():
             mime = "image/png" if pfad.suffix.lower() == ".png" else "image/jpeg"
@@ -73,6 +73,7 @@ def berechne_wand(wand, settings, skala: float):
     """Berechnet die fehlende Seitenfläche einer Wand über Volumen / Wanddicke."""
     d = None
     try:
+        # 1. Versuch: Gesamtdicke aus den Materialschichten (IfcMaterialLayerSet) auslesen
         sch = el.get_material(wand, should_skip_usage=True)
         if sch is not None and sch.is_a("IfcMaterialLayerSet"):
             d = sum(s.LayerThickness for s in sch.MaterialLayers) * skala
@@ -80,6 +81,7 @@ def berechne_wand(wand, settings, skala: float):
         pass
 
     if not d:
+        # 2. Versuch: Dicke aus dem Wandnamen extrahieren (z. B. "Wall-240" -> 0,24 m)
         t = re.search(r"Wall-(\d+)", wand.Name or "")
         d = int(t.group(1)) / 1000 if t else None
 
@@ -87,6 +89,7 @@ def berechne_wand(wand, settings, skala: float):
         return None
 
     try:
+        # Seitenfläche = Volumen (in m³) / Wanddicke (in m)
         volumen = shp.get_volume(ifcopenshell.geom.create_shape(settings, wand).geometry)
         return volumen / d
     except Exception:
@@ -109,6 +112,7 @@ def berechne_dach_geometrie(bauteil, settings):
             if norm_len == 0:
                 continue
             normal = kreuz / norm_len
+            # Nur Dreiecke berücksichtigen, deren Normale nach oben zeigt (Z > 0.1)
             if normal[2] > 0.1:
                 tri_flaeche = 0.5 * norm_len
                 flaeche_oben += tri_flaeche
@@ -146,7 +150,6 @@ def berechne_laenge_3d(bauteil, settings, modus: str = "horizontal"):
         if modus == "diagonal":
             horiz = max(dx, dy)
             return float(np.hypot(horiz, dz)) if horiz > 0.05 else None
-        # Standard: 'horizontal'
         horiz = max(dx, dy)
         return horiz if horiz > 0.05 else None
     except Exception:
@@ -340,7 +343,6 @@ def auswerten(daten: bytes, rechnen: bool):
             gelaender_art = "Absturzgeländer (Fenster)"
             geo_modus = "horizontal"
         else:
-            # Außenliegende Geländer ohne Treppenbezug sind im Bestand meist Absturzsicherungen
             ist_aussen = ps.get("Pset_RailingCommon", {}).get("IsExternal") is True
             gelaender_art = "Absturzgeländer (Fenster)" if ist_aussen else "Treppengeländer"
             geo_modus = "horizontal" if ist_aussen else "diagonal"
@@ -362,9 +364,14 @@ def auswerten(daten: bytes, rechnen: bool):
             "Herkunft": herkunft
         })
 
-    # --- 6. Regenrinnen & Fallrohre auswerten (IfcPipeSegment / IfcFlowSegment) ---
+    # --- 6. Regenrinnen & Fallrohre auswerten (Schema-sicher für IFC2x3 & IFC4) ---
     zeilen_entwaesserung = []
-    rohr_kandidaten = m.by_type("IfcPipeSegment") or m.by_type("IfcFlowSegment")
+    rohr_kandidaten = []
+    for klasse in ["IfcFlowSegment", "IfcBuildingElementProxy"]:
+        try:
+            rohr_kandidaten.extend(m.by_type(klasse))
+        except Exception:
+            pass
 
     for p in rohr_kandidaten:
         ps = el.get_psets(p)
@@ -378,7 +385,6 @@ def auswerten(daten: bytes, rechnen: bool):
         ist_rinne = predef == "GUTTER" or any(k in suchtext for k in ["rinne", "dachrinne", "gutter", "kastenrinne", "halbrund"])
         ist_fallrohr = predef == "DOWNPIPE" or any(k in suchtext for k in ["fallrohr", "regenrohr", "downpipe", "rainwater"])
 
-        # Falls das Modell nur allgemein Entwässerungsrohre führt, diese ebenfalls erfassen
         if not (ist_rinne or ist_fallrohr):
             continue
 
@@ -579,7 +585,7 @@ fallrohre_gesamt = (
     if not df_entwaesserung.empty else 0.0
 )
 
-# Kennzahlen-Karten in 2 Reihen à 3 Spalten (übersichtlich auf Desktop)
+# Kennzahlen-Karten in 2 Reihen à 3 Spalten
 k1, k2, k3 = st.columns(3)
 k1.markdown(f'<div class="karte"><span>Fassadendämmung (netto)</span><b>{fassade.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
 k2.markdown(f'<div class="karte"><span>Sockeldämmung (netto)</span><b>{sockel.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
@@ -605,7 +611,6 @@ if (
 # ==============================================================================
 # 6. TABELLEN & EXCEL-EXPORT
 # ==============================================================================
-# --- Wände ---
 zus_waende = df_waende.groupby("Kategorie").agg(
     Anzahl=("Name", "size"),
     Fläche=("Fläche", "sum"),
@@ -639,7 +644,6 @@ geo_waende = geo_waende.rename(columns={
     "Fläche_außen": "Fläche außen (m²)"
 }).reset_index()
 
-# --- Fenster ---
 if not df_fenster.empty:
     zus_fenster = df_fenster.groupby("Geschoss").agg(
         Anzahl=("Name", "size"),
@@ -649,7 +653,6 @@ if not df_fenster.empty:
 else:
     zus_fenster = pd.DataFrame(columns=["Geschoss", "Anzahl", "Fläche (m²)"])
 
-# --- Türen (nach den 6 Türarten) ---
 tuer_reihenfolge = [
     "Wohnungsinnentür",
     "Wohnungseingangstür",
@@ -668,7 +671,6 @@ if not df_tueren.empty:
 else:
     zus_tueren = pd.DataFrame(columns=["Türart", "Anzahl", "Fläche (m²)"])
 
-# --- Dächer ---
 if not df_daecher.empty:
     zus_daecher = df_daecher.groupby("Dachform").agg(
         Anzahl=("Name", "size"),
@@ -678,7 +680,6 @@ if not df_daecher.empty:
 else:
     zus_daecher = pd.DataFrame(columns=["Dachform", "Anzahl", "Fläche (m²)"])
 
-# --- Geländer (Treppengeländer vs. Absturzgeländer) ---
 if not df_gelaender.empty:
     zus_gelaender = df_gelaender.groupby("Geländerart").agg(
         Anzahl=("Name", "size"),
@@ -689,7 +690,6 @@ if not df_gelaender.empty:
 else:
     zus_gelaender = pd.DataFrame(columns=["Geländerart", "Anzahl", "Länge (m)"])
 
-# --- Regenrinnen & Fallrohre ---
 if not df_entwaesserung.empty:
     zus_entwaesserung = df_entwaesserung.groupby("Bauteilart").agg(
         Anzahl=("Name", "size"),
@@ -700,7 +700,6 @@ if not df_entwaesserung.empty:
 else:
     zus_entwaesserung = pd.DataFrame(columns=["Bauteilart", "Anzahl", "Länge (m)"])
 
-# --- Einzeltabellen vorbereiten ---
 detail_waende = df_waende[["Name", "GlobalId", "Geschoss", "Kategorie", "Fläche", "Herkunft"]].rename(columns={"Fläche": "Fläche (m²)"})
 detail_fenster = (
     df_fenster[["Name", "GlobalId", "Geschoss", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"]]
@@ -730,7 +729,6 @@ detail_entwaesserung = (
 
 fmt = lambda t: t.style.hide(axis="index").format(precision=1)
 
-# --- Anzeige im Browser ---
 st.markdown("### Wände: Zusammenfassung")
 st.table(fmt(zus_waende))
 st.markdown("### Wände: Pro Geschoss")
@@ -764,7 +762,7 @@ st.markdown("### Regenrinnen & Fallrohre: Zusammenfassung")
 if not zus_entwaesserung.empty:
     st.table(fmt(zus_entwaesserung))
 else:
-    st.info("Keine Regenrinnen oder Fallrohre (IfcPipeSegment / IfcFlowSegment) im Modell gefunden.")
+    st.info("Keine Regenrinnen oder Fallrohre (IfcFlowSegment / IfcBuildingElementProxy) im Modell gefunden.")
 
 with st.expander("Alle Wände einzeln"):
     st.dataframe(detail_waende, width="stretch", hide_index=True)
@@ -779,7 +777,6 @@ with st.expander("Alle Geländer einzeln"):
 with st.expander("Alle Regenrinnen & Fallrohre einzeln"):
     st.dataframe(detail_entwaesserung, width="stretch", hide_index=True)
 
-# --- Gesamtübersicht & Excel-Export ---
 ergebnis = pd.DataFrame({
     "Ergebnis": [
         "Fassadendämmung netto (m²)",
