@@ -186,8 +186,8 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
     """
     Erzeugt pro BIM-Bauteilgruppe ein kombiniertes Dreiecksnetz (Vertices + Faces)
     in Weltkoordinaten für die interaktive Plotly-3D-Vorschau – inklusive
-    oberirdischem Sockel, Kelleraußenwänden, Fundamenten (IfcFooting/Beam/Member)
-    und Bodenplatten (IfcSlab).
+    oberirdischem Sockel, Kelleraußenwänden (auch ohne IsExternal-Flag),
+    Fundamenten (IfcFooting/Beam/Member/Column) und Bodenplatten (IfcSlab).
     """
     with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
         f.write(daten)
@@ -211,8 +211,9 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
     def fuege_bauteil_hinzu(bauteil, gruppe_name: str, z_pruefung_erdreich: bool = False):
         """
         Trianguliert ein einzelnes IFC-Bauteil und hängt es an den Mesh-Puffer der Gruppe an.
-        Mit z_pruefung_erdreich=True werden Außenwände, deren Oberkante komplett unter Z = -0.20 m
-        liegt, automatisch als 'Fundament & Erdreich-Sockel' eingestuft.
+        Mit z_pruefung_erdreich=True werden Wände, deren Oberkante komplett unter Z = -0.10 m
+        liegt, automatisch als 'Fundament & Erdreich-Sockel' eingestuft – selbst wenn im IFC
+        IsExternal=False eingetragen wurde (typisch für Kelleraußenwände in Bestandsmodellen).
         """
         nonlocal dreiecke_gesamt, gekurzt
         if dreiecke_gesamt >= max_dreiecke_gesamt:
@@ -226,9 +227,9 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
             if len(verts) == 0 or len(faces) == 0:
                 return
 
-            if z_pruefung_erdreich and gruppe_name == "Außenwände & Fassade":
+            if z_pruefung_erdreich and gruppe_name in {"Außenwände & Fassade", "Innenwände"}:
                 z_max = float(verts[:, 2].max())
-                if z_max <= -0.20:
+                if z_max <= -0.10:
                     gruppe_name = "Fundament & Erdreich-Sockel"
 
             puffer = gruppen_puffer[gruppe_name]
@@ -265,22 +266,25 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
         elif ist_sockel_text:
             # Oberirdischer Sockel hat Vorrang vor allgemeinen Kellergeschoss-Namen
             fuege_bauteil_hinzu(w, "Sockel (oberirdisch)")
-        elif ist_im_kellergeschoss and ist_aussen:
+        elif ist_im_kellergeschoss:
+            # Alle Wände im Kellergeschoss für die 3D-Ansicht sichtbar machen, damit keine Lücke im Sockel entsteht
             fuege_bauteil_hinzu(w, "Fundament & Erdreich-Sockel")
         elif ist_aussen:
             fuege_bauteil_hinzu(w, "Außenwände & Fassade", z_pruefung_erdreich=True)
         else:
-            fuege_bauteil_hinzu(w, "Innenwände")
+            fuege_bauteil_hinzu(w, "Innenwände", z_pruefung_erdreich=True)
 
-    # 2. Streifen- & Einzelfundamente (IfcFooting, IfcBeam, IfcMember) sowie Bodenplatten (IfcSlab)
-    for klasse in ["IfcFooting", "IfcBeam", "IfcMember"]:
+    # 2. Streifen- & Einzelfundamente (IfcFooting, IfcBeam, IfcMember, IfcColumn) sowie Bodenplatten (IfcSlab)
+    for klasse in ["IfcFooting", "IfcBeam", "IfcMember", "IfcColumn"]:
         try:
             for elem in m.by_type(klasse):
                 suchtext = _hole_suchtext_bauteil(elem)
                 g = el.get_container(elem)
                 geschoss_name = (g.Name or "").lower() if g else ""
-                if klasse == "IfcFooting" or any(
-                    k in f"{suchtext} {geschoss_name}" for k in ["fundament", "streifen", "gründung", "footing", "sohle"]
+                if (
+                    klasse == "IfcFooting"
+                    or any(k in f"{suchtext} {geschoss_name}" for k in ["fundament", "streifen", "gründung", "footing", "sohle"])
+                    or (klasse == "IfcColumn" and any(k in geschoss_name for k in erdreich_gesch_kw))
                 ):
                     fuege_bauteil_hinzu(elem, "Fundament & Erdreich-Sockel")
                 elif "sockel" in suchtext:
