@@ -30,7 +30,7 @@ TEXT_HELL       = "#E6F1FF"   # Kühles Eisweiß für optimale Lesbarkeit
 TEXT_GEDAEMPFT  = "#94A3B8"   # Blaugrau für Untertitel & Beschreibungen
 EXCEL_HEADER    = "0D254C"    # Tiefblau für Excel-Tabellenköpfe
 
-# Blickdichte Architektur- & CAD-Farben für die 3D-Gebäudevorschau (deckkraft = 1.00 = nicht durchsichtig!)
+# Blickdichte Architektur- & CAD-Farben für die 3D-Gebäudevorschau (deckkraft = 1.00 = nicht durchsichtig)
 BIM_FARBEN = {
     "Außenwände & Fassade":         {"farbe": "#E2E8F0", "deckkraft": 1.00, "standard_an": True},
     "Sockel (oberirdisch)":         {"farbe": "#2563EB", "deckkraft": 1.00, "standard_an": True},
@@ -70,63 +70,110 @@ st.markdown(f"""<style>
     color: {TEXT_HELL};
 }}
 
-/* File-Uploader & hochgeladene Datei in der Seitenleiste klar lesbar machen */
-[data-testid="stFileUploaderDropzone"] {{
-    background-color: #102544 !important;
-    border: 1.5px dashed {AKZENT_CYAN} !important;
-    border-radius: 10px !important;
-    color: {TEXT_HELL} !important;
-}}
-[data-testid="stFileUploaderDropzone"] * {{
-    color: {TEXT_HELL} !important;
-}}
-[data-testid="stFileUploaderFile"] {{
-    background-color: #132C52 !important;
-    border: 1px solid rgba(0, 212, 255, 0.45) !important;
-    border-radius: 8px !important;
-    padding: 6px 10px !important;
+/* ============================================================================
+   KONTRAST-FIX: UPLOAD-DROPZONE, UPLOAD-BUTTON, DATEINAME, SPINNER & EXPANDER
+   ============================================================================ */
+/* 1. Upload-Dropzone (Hauptseite, Seitenleiste & CSV-Uploader) */
+[data-testid="stFileUploader"] section,
+section[data-testid="stFileUploaderDropzone"] {{
+    background-color: #0F2544 !important;
+    border: 2px dashed {AKZENT_CYAN} !important;
+    border-radius: 12px !important;
+    padding: 16px 20px !important;
     color: #FFFFFF !important;
 }}
-[data-testid="stFileUploaderFile"] * {{
-    color: #FFFFFF !important;
-}}
-[data-testid="stFileUploaderFileName"] {{
-    color: #FFFFFF !important;
-    font-weight: 600 !important;
+[data-testid="stFileUploader"] section span,
+[data-testid="stFileUploader"] section small,
+[data-testid="stFileUploaderDropzoneInstructions"] span,
+[data-testid="stFileUploaderDropzoneInstructions"] small {{
+    color: #E6F1FF !important;
+    opacity: 1 !important;
 }}
 
-/* Lade-Spinner (st.spinner) mit dunklem Hintergrund & weißer Schrift */
+/* 2. Innerer "Upload" / "Browse files"-Button im File-Uploader */
+[data-testid="stFileUploader"] button,
+section[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"],
+[data-testid="stFileUploader"] [data-testid="stBaseButton-minimal"] {{
+    background-color: #0284C7 !important;
+    background-image: linear-gradient(90deg, #0369A1 0%, #0284C7 100%) !important;
+    color: #FFFFFF !important;
+    border: 1.5px solid #38BDF8 !important;
+    border-radius: 8px !important;
+    font-weight: 700 !important;
+    padding: 6px 16px !important;
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.25) !important;
+}}
+[data-testid="stFileUploader"] button:hover,
+section[data-testid="stFileUploaderDropzone"] button:hover {{
+    background-color: #0EA5E9 !important;
+    background-image: linear-gradient(90deg, #0284C7 0%, #0EA5E9 100%) !important;
+    border-color: #FFFFFF !important;
+}}
+[data-testid="stFileUploader"] button *,
+[data-testid="stFileUploader"] button svg {{
+    color: #FFFFFF !important;
+    fill: #FFFFFF !important;
+    stroke: #FFFFFF !important;
+}}
+
+/* 3. Zeile der bereits hochgeladenen Datei (Dateiname + Größe + Löschen-X) */
+[data-testid="stFileUploaderFile"],
+[data-testid="stFileUploader"] ul li,
+[data-testid="stFileUploader"] ul li > div {{
+    background-color: #132F57 !important;
+    border: 1px solid {AKZENT_CYAN} !important;
+    border-radius: 8px !important;
+    color: #FFFFFF !important;
+}}
+[data-testid="stFileUploaderFile"] *,
+[data-testid="stFileUploaderFileName"],
+[data-testid="stFileUploader"] ul li * {{
+    color: #FFFFFF !important;
+    opacity: 1 !important;
+}}
+[data-testid="stFileUploaderFile"] svg,
+[data-testid="stFileUploader"] ul li svg {{
+    fill: {AKZENT_CYAN} !important;
+    color: {AKZENT_CYAN} !important;
+}}
+
+/* 4. Lade-Spinner (st.spinner) */
 [data-testid="stSpinner"],
-[data-testid="stSpinner"] > div {{
+[data-testid="stSpinner"] > div,
+div.stSpinner > div {{
     background-color: #0F2544 !important;
     color: #FFFFFF !important;
-    border: 1px solid rgba(0, 212, 255, 0.45) !important;
-    border-radius: 8px !important;
-    padding: 8px 14px !important;
+    border: 1.5px solid {AKZENT_CYAN} !important;
+    border-radius: 10px !important;
+    padding: 10px 16px !important;
 }}
-[data-testid="stSpinner"] p,
-[data-testid="stSpinner"] span,
-[data-testid="stSpinner"] div {{
+[data-testid="stSpinner"] *,
+div.stSpinner * {{
     color: #FFFFFF !important;
-    font-weight: 500 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
 }}
 
-/* Ausklappbare Boxen (st.expander) im Dark-Tech-Stil */
-[data-testid="stExpander"] {{
-    background-color: rgba(13, 27, 48, 0.88) !important;
-    border: 1px solid rgba(0, 212, 255, 0.35) !important;
+/* 5. Ausklappbare Boxen (st.expander) */
+[data-testid="stExpander"],
+[data-testid="stExpander"] details {{
+    background-color: #0D1B30 !important;
+    border: 1px solid rgba(0, 212, 255, 0.45) !important;
     border-radius: 10px !important;
 }}
-[data-testid="stExpander"] details summary,
-[data-testid="stExpander"] summary {{
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] details > summary {{
     background-color: #102544 !important;
     color: #FFFFFF !important;
     border-radius: 9px !important;
-    padding: 10px 14px !important;
+    padding: 12px 16px !important;
 }}
-[data-testid="stExpander"] summary * {{
+[data-testid="stExpander"] summary *,
+[data-testid="stExpander"] details > summary * {{
     color: #FFFFFF !important;
     font-weight: 600 !important;
+    opacity: 1 !important;
 }}
 [data-testid="stExpander"] summary:hover {{
     background-color: #16335E !important;
@@ -142,6 +189,26 @@ st.markdown(f"""<style>
 [data-baseweb="input"] input,
 [data-baseweb="select"] * {{
     color: #FFFFFF !important;
+}}
+
+/* Prominente Upload-Einladungs-Box auf der Startseite */
+.upload-hero {{
+    background: linear-gradient(135deg, rgba(13, 34, 66, 0.95) 0%, rgba(10, 56, 94, 0.92) 100%);
+    border: 2px solid {AKZENT_CYAN};
+    border-radius: 14px;
+    padding: 20px 24px 12px 24px;
+    margin-bottom: 18px;
+    box-shadow: 0 0 28px rgba(0, 212, 255, 0.20);
+}}
+.upload-hero h3 {{
+    margin: 0 0 4px 0 !important;
+    color: #FFFFFF !important;
+    font-size: 1.25rem !important;
+}}
+.upload-hero p {{
+    margin: 0 0 12px 0 !important;
+    color: #CBD5E1 !important;
+    font-size: 0.95rem !important;
 }}
 
 /* Futuristischer Hero-Header */
@@ -180,7 +247,7 @@ st.markdown(f"""<style>
     font-size: 1rem;
 }}
 
-/* Datenschutz- & Sicherheits-Banner (Dark-Tech Emerald/Cyan) */
+/* Datenschutz- & Sicherheits-Banner */
 .trust-banner {{
     background: linear-gradient(90deg, rgba(10, 38, 46, 0.90) 0%, rgba(13, 33, 58, 0.90) 100%);
     backdrop-filter: blur(10px);
@@ -618,7 +685,6 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
         teile = el.get_parts(r)
         dach_liste.extend(teile if teile else [r])
 
-    # Decken & Dächer (IfcSlab) sauber aufteilen: Dach vs. Bodenplatte/Keller vs. Geschossdecken
     for s in m.by_type("IfcSlab"):
         predef = (getattr(s, "PredefinedType", None) or "").upper()
         suchtext = _hole_suchtext_bauteil(s)
@@ -880,7 +946,6 @@ def auswerten(daten: bytes, rechnen: bool):
         geschoss_name = g.Name if g else "ohne Geschoss"
         suchtext_decke = f"{_hole_suchtext_bauteil(s)} {geschoss_name} {predef}".lower()
 
-        # Einordnung für Sanierung & DIN 276 (KG 320 Bodenplatte/Keller vs. KG 350 Geschossdecken/OGD)
         if (
             predef == "BASESLAB"
             or any(k in suchtext_decke for k in ["bodenplatte", "fundament", "sohle", "gründung", "kellerboden", "foundation", "basement", "keller", "ug"])
@@ -992,11 +1057,11 @@ def auswerten(daten: bytes, rechnen: bool):
 
 
 # ==============================================================================
-# 4. SEITENLEISTE & STARTSEITE
+# 4. UPLOAD-BEREICH (PROMINENT + SEITENLEISTE) & STARTSEITE
 # ==============================================================================
 with st.sidebar:
     st.markdown(f"<h3 style='color:{AKZENT_CYAN};margin-bottom:4px;'>CONTROL PANEL</h3>", unsafe_allow_html=True)
-    datei = st.file_uploader("IFC-Modell hochladen (.ifc)", type="ifc")
+    datei_sidebar = st.file_uploader("IFC-Modell hochladen (.ifc)", type="ifc", key="ifc_upload_sidebar")
     st.markdown(
         '<div class="sidebar-trust">'
         '<strong>100 % vertraulich:</strong> Ihre IFC-Datei wird ausschließlich flüchtig im Arbeitsspeicher '
@@ -1006,7 +1071,27 @@ with st.sidebar:
     )
     rechnen = st.checkbox("Fehlende Maße aus 3D-Geometrie berechnen", value=True)
 
-    if datei is not None:
+datei_haupt = None
+if datei_sidebar is None:
+    st.markdown(
+        '<div class="upload-hero">'
+        '<h3>IFC-Gebäudemodell hochladen &amp; Auswertung starten</h3>'
+        '<p>Ziehen Sie Ihre <strong>.ifc-Datei</strong> direkt in das Feld unten oder klicken Sie auf '
+        '<strong>Upload / Browse files</strong> (alternativ auch links im Control Panel möglich).</p>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+    datei_haupt = st.file_uploader(
+        "IFC-Datei auswählen (.ifc)",
+        type="ifc",
+        key="ifc_upload_main",
+        label_visibility="collapsed"
+    )
+
+datei = datei_sidebar if datei_sidebar is not None else datei_haupt
+
+if datei is not None:
+    with st.sidebar:
         if st.button("Sitzung & Arbeitsspeicher leeren", use_container_width=True, help="Löscht alle zwischengespeicherten Auswertungsdaten sofort aus dem RAM."):
             st.cache_data.clear()
             st.rerun()
@@ -1067,7 +1152,7 @@ if not datei:
     st.markdown("---")
     st.markdown("### Workflow in drei Schritten")
     st.markdown(
-        "1. **IFC-Datei laden:** Wählen Sie links im Control Panel über **Browse files** ein `.ifc`-Gebäudemodell aus.\n"
+        "1. **IFC-Datei laden:** Wählen Sie oben im Upload-Feld (oder links im Control Panel) ein `.ifc`-Gebäudemodell aus.\n"
         "2. **Geschosse & eigene Preise konfigurieren:** Prüfen Sie die Geschossfilter in der Seitenleiste und hinterlegen Sie bei Bedarf eigene Einheitspreise nach DIN 276.\n"
         "3. **3D-Modell prüfen & Excel exportieren:** Kontrollieren Sie die Bauteile im interaktiven 3D-Viewport, laden Sie den **Excel-Bericht** herunter und leeren Sie bei Bedarf den Arbeitsspeicher."
     )
@@ -1372,7 +1457,6 @@ else:
     laenge_absturz_gelaender = 0.0
     laenge_treppen_gelaender = 0.0
 
-# Deckenflächen nach DIN 276 aufteilen (KG 320 vs. KG 350)
 if not df_decken.empty:
     flaeche_bodenplatte_kg320 = float(
         df_decken.loc[df_decken["Deckenart"] == "Bodenplatte / Kellerdecke", "Fläche (m²)"].sum()
