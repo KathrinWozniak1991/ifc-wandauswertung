@@ -63,7 +63,7 @@ def lade_profilbild_html() -> str:
     """
     Sucht unabhängig von Groß-/Kleinschreibung nach einer Profilbild-Datei
     im Projektordner (z. B. profil.jpg, profil.JPG, profil.png) und bettet sie
-    als Base64-Bild ein. Zeigt 'KW' im Kreis, falls noch keine Datei auf dem Server liegt.
+    als Base64-Bild ein. Zeigt 'KW' im Kreis, falls kein gültiges Bild vorliegt.
     """
     basis_ordner = Path(__file__).resolve().parent
     erlaubte_endungen = {".jpg", ".jpeg", ".png", ".webp"}
@@ -75,9 +75,19 @@ def lade_profilbild_html() -> str:
             and datei.suffix.lower() in erlaubte_endungen
             and datei.stat().st_size > 0
         ):
-            endung = datei.suffix.lower()
-            mime = "image/png" if endung == ".png" else ("image/webp" if endung == ".webp" else "image/jpeg")
-            b64 = base64.b64encode(datei.read_bytes()).decode("utf-8")
+            rohe_daten = datei.read_bytes()
+            # Prüfen, ob es wirklich echte Bilddaten sind (JPEG startet mit FF D8, PNG mit 89 50)
+            if rohe_daten.startswith(b"\xff\xd8"):
+                mime = "image/jpeg"
+            elif rohe_daten.startswith(b"\x89PNG"):
+                mime = "image/png"
+            elif rohe_daten.startswith(b"RIFF") and b"WEBP" in rohe_daten[:16]:
+                mime = "image/webp"
+            else:
+                # Datei ist z. B. eine umbenannte HEIC- oder HTML-Datei -> Fallback nutzen
+                continue
+
+            b64 = base64.b64encode(rohe_daten).decode("ascii")
             return f'<img src="data:{mime};base64,{b64}" alt="Kathrin Wozniak" />'
 
     return '<div class="ueber-mich-platzhalter">KW</div>'
@@ -87,7 +97,6 @@ def berechne_wand(wand, settings, skala: float):
     """Berechnet die fehlende Seitenfläche einer Wand über Volumen / Wanddicke."""
     d = None
     try:
-        # 1. Versuch: Gesamtdicke aus den Materialschichten (IfcMaterialLayerSet) auslesen
         sch = el.get_material(wand, should_skip_usage=True)
         if sch is not None and sch.is_a("IfcMaterialLayerSet"):
             d = sum(s.LayerThickness for s in sch.MaterialLayers) * skala
@@ -95,7 +104,6 @@ def berechne_wand(wand, settings, skala: float):
         pass
 
     if not d:
-        # 2. Versuch: Dicke aus dem Wandnamen extrahieren (z. B. "Wall-240" -> 0,24 m)
         t = re.search(r"Wall-(\d+)", wand.Name or "")
         d = int(t.group(1)) / 1000 if t else None
 
@@ -103,7 +111,6 @@ def berechne_wand(wand, settings, skala: float):
         return None
 
     try:
-        # Seitenfläche = Volumen (in m³) / Wanddicke (in m)
         volumen = shp.get_volume(ifcopenshell.geom.create_shape(settings, wand).geometry)
         return volumen / d
     except Exception:
@@ -126,7 +133,6 @@ def berechne_dach_geometrie(bauteil, settings):
             if norm_len == 0:
                 continue
             normal = kreuz / norm_len
-            # Nur Dreiecke berücksichtigen, deren Normale nach oben zeigt (Z > 0.1)
             if normal[2] > 0.1:
                 tri_flaeche = 0.5 * norm_len
                 flaeche_oben += tri_flaeche
@@ -143,10 +149,7 @@ def berechne_dach_geometrie(bauteil, settings):
 
 
 def berechne_laenge_3d(bauteil, settings, modus: str = "horizontal"):
-    """
-    Fallback für Geländer, Regenrinnen und Fallrohre:
-    Schätzt die Bauteillänge aus der 3D-Ausdehnung (Bounding Box) in Metern.
-    """
+    """Schätzt die Bauteillänge aus der 3D-Ausdehnung (Bounding Box) in Metern."""
     try:
         geom = ifcopenshell.geom.create_shape(settings, bauteil).geometry
         verts = np.array(geom.verts).reshape(-1, 3)
@@ -210,7 +213,6 @@ def auswerten(daten: bytes, rechnen: bool):
 
         wand_name = w.Name or ""
         ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True
-        # Fallback für Revit-Exporte ohne IsExternal: Typische Außenwand-Begriffe prüfen
         if not ist_aussen and any(k in wand_name.lower() for k in ["fassade", "aussen", "außen", "exterior", "sockel"]):
             ist_aussen = True
 
@@ -274,7 +276,6 @@ def auswerten(daten: bytes, rechnen: bool):
         typ_obj = el.get_type(t)
         typ_name = typ_obj.Name if typ_obj and typ_obj.Name else ""
 
-        # Außenlage prüfen (direktes Property + Fallback über Mutterwand)
         ist_aussen = ps.get("Pset_DoorCommon", {}).get("IsExternal") is True
         wand_name = ""
         try:
@@ -576,13 +577,11 @@ def kategorie_tuer(r):
     ist_we = any(k.strip().lower() in name_typ_low for k in we_kw.split(",") if k.strip())
     ist_he = any(k.strip().lower() in name_typ_low for k in he_kw.split(",") if k.strip())
 
-    # 1. Außentüren unterscheiden (Kelleraußentür vs. Hauseingangstür)
     if r.ist_aussen or ist_he:
         if ist_keller and not ist_he:
             return "Kelleraußentür"
         return "Hauseingangstür"
 
-    # 2. Innentüren nach Funktion & Geschoss unterscheiden
     if ist_we:
         return "Wohnungseingangstür"
     if ist_keller:
@@ -615,7 +614,6 @@ fallrohre_gesamt = (
     if not df_entwaesserung.empty else 0.0
 )
 
-# Kennzahlen-Karten in 2 Reihen à 3 Spalten
 k1, k2, k3 = st.columns(3)
 k1.markdown(f'<div class="karte"><span>Fassadendämmung (netto)</span><b>{fassade.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
 k2.markdown(f'<div class="karte"><span>Sockeldämmung (netto)</span><b>{sockel.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
