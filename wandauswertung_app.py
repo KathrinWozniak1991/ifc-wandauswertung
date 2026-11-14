@@ -15,56 +15,266 @@ import ifcopenshell.util.unit as un
 from openpyxl.styles import Font, PatternFill
 
 # ==============================================================================
-# 1. DESIGN-KONFIGURATION, DATENSCHUTZ-SCHALTER & SEITENLAYOUT
+# 1. DARK-TECH DESIGN-KONFIGURATION, DATENSCHUTZ-SCHALTER & SEITENLAYOUT
 # ==============================================================================
 # Schalter für den Serverstandort-Hinweis (True = Serverstandort Deutschland aktiv)
 HOSTING_IN_DEUTSCHLAND = True
 
-# Harmonische Beige- und Sandtöne für die Benutzeroberfläche
-HAUPT_BEIGE = "#8C735B"   # Warmes Taupe-Braun für Kopfzeile & Tabellenköpfe
-AKZENT_SAND = "#C8B299"   # Sandbeige für Rahmen & Akzentlinien
-HELL_CREME  = "#F5EFE6"   # Helles Creme-Beige für Karten & Hintergrundboxen
-TEXT_BRAUN  = "#3E3228"   # Dunkles Espresso-Braun für hohen Kontrast
+# Futuristische OpenBIM Dark-Tech Farbpalette (inspiriert von High-Tech BIM & CAD)
+BG_TIEFBLAU     = "#060E1B"   # Haupthintergrund (Deep Space Navy)
+BG_PANEL        = "#0D1B30"   # Seitenleiste & Karten-Basis
+AKZENT_CYAN     = "#00D4FF"   # Leuchtendes Cyan für Fokus, Rahmen & Kennzahlen
+AKZENT_KOBALT   = "#1D4ED8"   # Technisches Kobaltblau
+AKZENT_AMBER    = "#F59E0B"   # Signal-Amber/Gold für CAD-Kontraste & Warnungen
+TEXT_HELL       = "#E6F1FF"   # Kühles Eisweiß für optimale Lesbarkeit
+TEXT_GEDÄMPFT   = "#94A3B8"   # Blaugrau für Untertitel & Beschreibungen
+EXCEL_HEADER    = "0D254C"    # Tiefblau für Excel-Tabellenköpfe
 
-# OpenBIM-Farbschema für die 3D-Gebäudevorschau:
-# Außenwände in ruhigem Sand-Beige; klare Abstufung zwischen Fassade, Sockel und Fundament
+# CAD-Tragwerks- & OpenBIM-Farbschema für die 3D-Gebäudevorschau (Dark Viewport)
 BIM_FARBEN = {
-    "Außenwände & Fassade":         {"farbe": "#E6D7C3", "deckkraft": 1.00, "standard_an": True},
-    "Sockel (oberirdisch)":         {"farbe": "#8C929A", "deckkraft": 1.00, "standard_an": True},
-    "Fundament & Erdreich-Sockel":  {"farbe": "#4A4E54", "deckkraft": 1.00, "standard_an": True},
-    "Innenwände":                   {"farbe": "#D0D4D9", "deckkraft": 0.85, "standard_an": False},
-    "Dachflächen":                  {"farbe": "#B84A39", "deckkraft": 1.00, "standard_an": True},
-    "Fenster":                      {"farbe": "#5DADE2", "deckkraft": 0.45, "standard_an": True},
-    "Türen":                        {"farbe": "#8B5A2B", "deckkraft": 1.00, "standard_an": True},
-    "Geländer":                     {"farbe": "#34495E", "deckkraft": 1.00, "standard_an": True},
-    "Regenrinnen & Fallrohre":      {"farbe": "#2E86C1", "deckkraft": 1.00, "standard_an": True},
+    "Außenwände & Fassade":         {"farbe": "#60A5FA", "deckkraft": 0.92, "standard_an": True},
+    "Sockel (oberirdisch)":         {"farbe": "#1D4ED8", "deckkraft": 1.00, "standard_an": True},
+    "Fundament & Erdreich-Sockel":  {"farbe": "#334155", "deckkraft": 1.00, "standard_an": True},
+    "Innenwände":                   {"farbe": "#475569", "deckkraft": 0.55, "standard_an": False},
+    "Dachflächen":                  {"farbe": "#EA580C", "deckkraft": 0.95, "standard_an": True},
+    "Fenster":                      {"farbe": "#00D4FF", "deckkraft": 0.42, "standard_an": True},
+    "Türen":                        {"farbe": "#38BDF8", "deckkraft": 0.95, "standard_an": True},
+    "Geländer":                     {"farbe": "#F59E0B", "deckkraft": 1.00, "standard_an": True},
+    "Regenrinnen & Fallrohre":      {"farbe": "#22D3EE", "deckkraft": 1.00, "standard_an": True},
 }
 
-st.set_page_config(page_title="bauteilauswertung-ifc", layout="wide")
+st.set_page_config(page_title="bauteilauswertung-ifc // OpenBIM Engine", layout="wide")
 
 st.markdown(f"""<style>
-.kopf{{background:{HAUPT_BEIGE};color:#fff;padding:22px 26px;border-radius:10px;border-bottom:5px solid {AKZENT_SAND};margin-bottom:14px}}
-.kopf h1{{color:#fff;margin:0;font-size:1.75rem}}
-.kopf p{{color:#F5EFE6;margin:6px 0 0 0;font-size:1rem}}
-.trust-banner{{background:#F1F6F2;border:1px solid #C8DEC9;border-left:6px solid #2E6F40;padding:12px 18px;border-radius:8px;margin-bottom:12px;color:#1F3A26;font-size:0.93rem;line-height:1.45}}
-.trust-banner strong{{color:#183320}}
-.trust-badges{{display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;font-weight:600;font-size:0.88rem}}
-.trust-badge-item{{background:#E3EFE5;padding:4px 10px;border-radius:5px;border:1px solid #C2D9C5}}
-.sidebar-trust{{background:#F1F6F2;border:1px solid #C8DEC9;border-left:4px solid #2E6F40;padding:10px 12px;border-radius:6px;font-size:0.83rem;color:#1F3A26;margin-top:8px;margin-bottom:12px;line-height:1.4}}
-.karte{{background:{HELL_CREME};border-left:6px solid {HAUPT_BEIGE};padding:14px 18px;border-radius:8px;margin-bottom:10px}}
-.karte span{{color:#6E5D4F;font-size:0.85rem}} .karte b{{display:block;color:{TEXT_BRAUN};font-size:1.55rem}}
-.info-box{{background:#FAF7F2;border:1px solid #E5DCCB;border-top:4px solid {HAUPT_BEIGE};padding:18px 20px;border-radius:8px;height:100%;box-shadow:0 2px 4px rgba(62,50,40,0.05)}}
-.info-box h4{{color:{TEXT_BRAUN};margin-top:0;margin-bottom:8px;font-size:1.1rem}}
-.info-box p{{color:#5C4D40;font-size:0.95rem;line-height:1.5;margin:0}}
-.ueber-mich-platzhalter{{width:145px;height:145px;border-radius:50%;border:4px solid {AKZENT_SAND};background:{HAUPT_BEIGE};color:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:bold;flex-shrink:0}}
-[data-testid="stTable"] th{{background:{HAUPT_BEIGE}!important;color:#fff!important}}
-h3{{color:{TEXT_BRAUN}}}
+/* Globales Dark-Tech-Layout & technisches Blueprint-Raster */
+[data-testid="stAppViewContainer"] {{
+    background-color: {BG_TIEFBLAU};
+    background-image:
+        radial-gradient(circle at 15% 15%, rgba(0, 212, 255, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 25%, rgba(29, 78, 216, 0.12) 0%, transparent 45%),
+        linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+    color: {TEXT_HELL};
+}}
+[data-testid="stHeader"] {{
+    background: rgba(6, 14, 27, 0.75);
+    backdrop-filter: blur(8px);
+}}
+[data-testid="stSidebar"] {{
+    background: linear-gradient(180deg, #091529 0%, #0D1E38 100%);
+    border-right: 1px solid rgba(0, 212, 255, 0.22);
+}}
+[data-testid="stSidebar"] * {{
+    color: {TEXT_HELL};
+}}
+
+/* Futuristischer Hero-Header */
+.kopf {{
+    background: linear-gradient(135deg, #08162C 0%, #0F2B57 55%, #0A4D7C 100%);
+    color: #FFFFFF;
+    padding: 24px 28px;
+    border-radius: 12px;
+    border: 1px solid rgba(0, 212, 255, 0.45);
+    border-left: 6px solid {AKZENT_CYAN};
+    box-shadow: 0 8px 32px rgba(0, 212, 255, 0.14);
+    margin-bottom: 16px;
+}}
+.kopf-tag {{
+    display: inline-block;
+    font-family: monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    color: {AKZENT_CYAN};
+    background: rgba(0, 212, 255, 0.12);
+    border: 1px solid rgba(0, 212, 255, 0.35);
+    padding: 3px 10px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}}
+.kopf h1 {{
+    color: #FFFFFF;
+    margin: 0;
+    font-size: 1.85rem;
+    letter-spacing: 0.01em;
+    text-shadow: 0 0 18px rgba(0, 212, 255, 0.35);
+}}
+.kopf p {{
+    color: #CBD5E1;
+    margin: 6px 0 0 0;
+    font-size: 1rem;
+}}
+
+/* Datenschutz- & Sicherheits-Banner (Dark-Tech Emerald/Cyan) */
+.trust-banner {{
+    background: linear-gradient(90deg, rgba(10, 38, 46, 0.88) 0%, rgba(13, 33, 58, 0.88) 100%);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(16, 185, 129, 0.42);
+    border-left: 5px solid #10B981;
+    padding: 13px 18px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    color: #E2F8F0;
+    font-size: 0.93rem;
+    line-height: 1.45;
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.08);
+}}
+.trust-banner strong {{
+    color: #6EE7B7;
+}}
+.trust-badges {{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+    font-weight: 600;
+    font-size: 0.84rem;
+}}
+.trust-badge-item {{
+    background: rgba(16, 185, 129, 0.14);
+    color: #A7F3D0;
+    padding: 4px 11px;
+    border-radius: 5px;
+    border: 1px solid rgba(16, 185, 129, 0.38);
+}}
+.sidebar-trust {{
+    background: rgba(10, 38, 46, 0.78);
+    border: 1px solid rgba(16, 185, 129, 0.38);
+    border-left: 4px solid #10B981;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: #D1FAE5;
+    margin-top: 8px;
+    margin-bottom: 14px;
+    line-height: 1.4;
+}}
+
+/* Glassmorphism Kennzahlen-Karten */
+.karte {{
+    background: linear-gradient(145deg, rgba(15, 34, 64, 0.82), rgba(10, 24, 46, 0.92));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 212, 255, 0.28);
+    border-left: 4px solid {AKZENT_CYAN};
+    padding: 15px 18px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}}
+.karte:hover {{
+    transform: translateY(-2px);
+    border-color: rgba(0, 212, 255, 0.75);
+    box-shadow: 0 6px 24px rgba(0, 212, 255, 0.18);
+}}
+.karte span {{
+    color: {TEXT_GEDÄMPFT};
+    font-size: 0.84rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}}
+.karte b {{
+    display: block;
+    color: #FFFFFF;
+    font-size: 1.55rem;
+    margin-top: 3px;
+    text-shadow: 0 0 12px rgba(0, 212, 255, 0.25);
+}}
+
+/* Glassmorphism Feature-Boxen auf der Startseite */
+.info-box {{
+    background: linear-gradient(160deg, rgba(16, 36, 68, 0.76), rgba(9, 21, 41, 0.90));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-top: 3px solid {AKZENT_CYAN};
+    padding: 18px 20px;
+    border-radius: 10px;
+    height: 100%;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}}
+.info-box:hover {{
+    border-color: rgba(0, 212, 255, 0.65);
+    box-shadow: 0 8px 28px rgba(0, 212, 255, 0.15);
+}}
+.info-box .modul-nr {{
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: {AKZENT_CYAN};
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+}}
+.info-box h4 {{
+    color: #FFFFFF;
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 1.08rem;
+}}
+.info-box p {{
+    color: #CBD5E1;
+    font-size: 0.93rem;
+    line-height: 1.5;
+    margin: 0;
+}}
+
+/* Profilbild-Platzhalter im Dark-Tech-Stil */
+.ueber-mich-platzhalter {{
+    width: 145px;
+    height: 145px;
+    border-radius: 50%;
+    border: 3px solid {AKZENT_CYAN};
+    box-shadow: 0 0 22px rgba(0, 212, 255, 0.35);
+    background: linear-gradient(135deg, #0D254C, #0077B6);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: bold;
+    flex-shrink: 0;
+}}
+
+/* Tabellen, Überschriften & Buttons */
+[data-testid="stTable"] table {{
+    background-color: rgba(13, 27, 48, 0.85) !important;
+    color: {TEXT_HELL} !important;
+    border: 1px solid rgba(0, 212, 255, 0.22) !important;
+}}
+[data-testid="stTable"] th {{
+    background: linear-gradient(90deg, #0D254C, #13386E) !important;
+    color: {AKZENT_CYAN} !important;
+    border-bottom: 1px solid rgba(0, 212, 255, 0.4) !important;
+}}
+[data-testid="stTable"] td {{
+    color: {TEXT_HELL} !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.14) !important;
+}}
+h1, h2, h3, h4 {{
+    color: #F8FAFC !important;
+}}
+p, li, label, .stMarkdown {{
+    color: {TEXT_HELL};
+}}
+.stDownloadButton button, .stButton button {{
+    background: linear-gradient(90deg, #0E3A6E 0%, #0284C7 100%) !important;
+    color: #FFFFFF !important;
+    border: 1px solid rgba(0, 212, 255, 0.55) !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.18) !important;
+    transition: all 0.2s ease !important;
+}}
+.stDownloadButton button:hover, .stButton button:hover {{
+    border-color: #FFFFFF !important;
+    box-shadow: 0 0 22px rgba(0, 212, 255, 0.45) !important;
+}}
 </style>""", unsafe_allow_html=True)
 
 st.markdown(
     '<div class="kopf">'
+    '<div class="kopf-tag">OPENBIM ANALYTICS ENGINE // IFC 2X3 &amp; IFC 4 // DIN 276</div>'
     '<h1>bauteilauswertung-ifc</h1>'
-    '<p>Automatisierte Mengen-, Flächen- und Längenermittlung aus OpenBIM-Bestandsmodellen</p>'
+    '<p>Automatisierte 3D-Geometrie-, Mengen- und Kostengruppenanalyse für Bestandsgebäude</p>'
     '</div>',
     unsafe_allow_html=True
 )
@@ -80,12 +290,12 @@ server_badge = (
 
 st.markdown(
     f'<div class="trust-banner">'
-    f'<strong>Datenschutz &amp; Vertraulichkeit Ihrer Projektdaten:</strong> '
+    f'<strong>Zero-Storage &amp; Datenschutz-Garantie:</strong> '
     f'Ihre IFC-Gebäudemodelle und Auswertungsdaten werden <strong>nicht dauerhaft gespeichert</strong>, '
     f'<strong>nicht an Dritte weitergegeben</strong> und <strong>nicht für KI-Training verwendet</strong>.'
     f'<div class="trust-badges">'
     f'<span class="trust-badge-item">Keine Speicherung von IFC-Dateien</span>'
-    f'<span class="trust-badge-item">Flüchtige Auswertung im Arbeitsspeicher (RAM)</span>'
+    f'<span class="trust-badge-item">Flüchtige RAM-Auswertung</span>'
     f'<span class="trust-badge-item">Keine Weitergabe an Dritte</span>'
     f'{server_badge}'
     f'</div>'
@@ -102,7 +312,7 @@ with st.expander("Technische Details zu Datenschutz & Datensicherheit (für Auft
         "**2. Isolierte Verarbeitung in Ihrer Browser-Sitzung:**\n"
         "- Alle Berechnungen (Mengenermittlung, 3D-Vorschau, DIN 276-Zuordnung und Excel-Generierung) erfolgen flüchtig im Arbeitsspeicher (RAM) Ihrer aktuellen Sitzung.\n"
         "- Andere Nutzer haben zu keinem Zeitpunkt Zugriff auf Ihre Sitzungsdaten. Beim Schließen des Browser-Tabs oder über den Button "
-        "*„Sitzung & Arbeitsspeicher sofort leeren“* werden alle Zwischendaten vollständig verworfen.\n\n"
+        "*„Sitzung & Arbeitsspeicher leeren“* werden alle Zwischendaten vollständig verworfen.\n\n"
         "**3. Keine Weitergabe & kein KI-Training:**\n"
         "- Ihre Gebäudemodelle, Grundrisse, Bauteileigenschaften und Preisangaben werden weder an externe Dienste übertragen noch ausgewertet oder für das Training von KI-Modellen genutzt.\n\n"
         "**4. Verschlüsselte Übertragung & Hosting:**\n"
@@ -205,8 +415,7 @@ def hole_laenge_aus_psets(ps: dict, skala: float):
 def _hole_suchtext_bauteil(bauteil) -> str:
     """
     Fasst Instanzname, Bauteiltyp (IfcTypeObject) und Materialnamen eines IFC-Elements
-    in einem kleingeschriebenen Suchstring zusammen, damit auch Typ- oder Schichtnamen
-    wie 'Sockel' oder 'Fundament' zuverlässig erkannt werden.
+    in einem kleingeschriebenen Suchstring zusammen.
     """
     teile = [bauteil.Name or ""]
     try:
@@ -230,12 +439,11 @@ def _hole_suchtext_bauteil(bauteil) -> str:
     return " ".join(teile).lower()
 
 
-@st.cache_data(show_spinner="3D-Gebäudegeometrie wird für die Vorschau aufbereitet …")
+@st.cache_data(show_spinner="3D-CAD-Geometrie wird für den Viewport aufbereitet …")
 def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
     """
     Erzeugt pro BIM-Bauteilgruppe ein kombiniertes Dreiecksnetz (Vertices + Faces)
     in Weltkoordinaten für die interaktive Plotly-3D-Vorschau.
-    Die temporäre Datei wird nach dem Einlesen sofort wieder von der Festplatte entfernt.
     """
     with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
         f.write(daten)
@@ -391,7 +599,7 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
 # ==============================================================================
 # 3. HAUPTAUSWERTUNG DER IFC-DATEI
 # ==============================================================================
-@st.cache_data(show_spinner="IFC wird ausgewertet … (Wände, Fenster, Türen, Dächer, Geländer & Entwässerung)")
+@st.cache_data(show_spinner="IFC-Modell wird analysiert … (Wände, Fenster, Türen, Dächer, Geländer & Entwässerung)")
 def auswerten(daten: bytes, rechnen: bool):
     """
     Liest das hochgeladene IFC-Modell flüchtig ein und löscht die temporäre
@@ -481,7 +689,7 @@ def auswerten(daten: bytes, rechnen: bool):
         if b is None and isinstance(q.get("Width"), (int, float)):
             b = q["Width"] * skala if q["Width"] > 50 else q["Width"]
         if h is None and isinstance(q.get("Height"), (int, float)):
-            h = q["Height"] * skala if q["Height"] > 50 else q["Height"]
+            h = q["Height"] * skala if isinstance(h, (int, float)) else None
 
         fl = q.get("Area") if isinstance(q.get("Area"), (int, float)) else ((b * h) if (b and h) else None)
         g = el.get_container(t)
@@ -666,8 +874,8 @@ def auswerten(daten: bytes, rechnen: bool):
 # 4. SEITENLEISTE & STARTSEITE
 # ==============================================================================
 with st.sidebar:
-    st.header("Einstellungen")
-    datei = st.file_uploader("IFC-Modell hochladen", type="ifc")
+    st.markdown(f"<h3 style='color:{AKZENT_CYAN};margin-bottom:4px;'>CONTROL PANEL</h3>", unsafe_allow_html=True)
+    datei = st.file_uploader("IFC-Modell hochladen (.ifc)", type="ifc")
     st.markdown(
         '<div class="sidebar-trust">'
         '<strong>100 % vertraulich:</strong> Ihre IFC-Datei wird ausschließlich flüchtig im Arbeitsspeicher '
@@ -677,70 +885,70 @@ with st.sidebar:
     )
     rechnen = st.checkbox("Fehlende Maße aus 3D-Geometrie berechnen", value=True)
 
-    # Aktiver Button zum sofortigen Löschen aller zwischengespeicherten Sitzungsdaten
     if datei is not None:
         if st.button("Sitzung & Arbeitsspeicher leeren", use_container_width=True, help="Löscht alle zwischengespeicherten Auswertungsdaten sofort aus dem RAM."):
             st.cache_data.clear()
             st.rerun()
 
 if not datei:
-    st.markdown("### Willkommen bei bauteilauswertung-ifc")
+    st.markdown("### Willkommen im OpenBIM-Auswertungs-Cockpit")
     st.write(
-        "Diese Web-Anwendung wertet digitale Gebäudemodelle im offenen **IFC-Format (OpenBIM)** "
-        "automatisiert aus. Sie wurde speziell entwickelt, um Bestandsgebäude im Wohnungsbau "
-        "schnell, transparent und zuverlässig für **Modernisierungs- und Sanierungsmaßnahmen** "
-        "(Fassade, Fenster, Türen, Dach, Geländer, Dachentwässerung und DIN 276-Zuordnung) zu analysieren."
+        "Diese Web-Anwendung analysiert digitale Gebäudemodelle im offenen **IFC-Format (OpenBIM)** "
+        "vollautomatisch in Echtzeit. Entwickelt für Bestandsgebäude im Wohnungsbau, liefert das System "
+        "in Sekunden belastbare Mengen, 3D-Ansichten und **DIN 276-Kostengruppen** für "
+        "Modernisierungs- und Sanierungsprojekte."
     )
 
     v1, v2, v3, v4 = st.columns(4)
     with v1:
         st.markdown(
             '<div class="info-box">'
-            '<h4>1. Schnelle Mengen statt Handarbeit</h4>'
-            '<p>Kein mühsames Zusammensuchen in CAD- oder Viewer-Programmen: '
-            'Fassaden-, Sockel-, Fenster-, Tür- und Dachmengen sowie Geländer- und Rinnenlängen '
-            'stehen wenige Sekunden nach dem Upload bereit.</p>'
+            '<div class="modul-nr">MODUL 01 // QUANTITY TAKE-OFF</div>'
+            '<h4>Automatisierte Mengen</h4>'
+            '<p>Fassaden-, Sockel-, Fenster-, Tür- und Dachflächen sowie Geländer- und Rinnenlängen '
+            'werden direkt aus der IFC-Datenstruktur extrahiert – ohne manuelles Nachmessen.</p>'
             '</div>',
             unsafe_allow_html=True
         )
     with v2:
         st.markdown(
             '<div class="info-box">'
-            '<h4>2. Intelligente Geometrie-Prüfung</h4>'
-            '<p>Fehlen in einem Bestandsmodell Flächen- oder Längenangaben in den Eigenschaften, '
-            'berechnet die App diese automatisch aus der 3D-Geometrie nach – und weist '
-            'transparent aus, welche Werte aus dem Modell stammen.</p>'
+            '<div class="modul-nr">MODUL 02 // 3D GEOMETRY ENGINE</div>'
+            '<h4>3D-CAD-Check &amp; Fallback</h4>'
+            '<p>Fehlen im Bestandsmodell Flächen- oder Längenparameter, berechnet die Geometrie-Engine '
+            'diese aus den 3D-Körpern nach und kennzeichnet die Datenherkunft transparent.</p>'
             '</div>',
             unsafe_allow_html=True
         )
     with v3:
         st.markdown(
             '<div class="info-box">'
-            '<h4>3. DIN 276 &amp; Excel-Bericht</h4>'
-            '<p>Alle Mengen werden automatisch den Kostengruppen der DIN 276 (2. Ebene) zugeordnet. '
-            'Sie können Ihre eigenen Einheitspreise hinterlegen und den fertigen '
-            'Excel-Bericht mit einem Klick exportieren.</p>'
+            '<div class="modul-nr">MODUL 03 // DIN 276 &amp; EXPORT</div>'
+            '<h4>Kostengruppen &amp; Excel</h4>'
+            '<p>Automatische Strukturierung nach DIN 276 (2. Ebene), Eingabe eigener Einheitspreise '
+            'oder CSV-Preislisten sowie strukturierter Mehrblatt-Excel-Export.</p>'
             '</div>',
             unsafe_allow_html=True
         )
     with v4:
         st.markdown(
             '<div class="info-box">'
-            '<h4>4. Höchste Datensicherheit</h4>'
-            '<p>Kein Cloud-Archiv, keine Weitergabe, kein KI-Training: '
+            '<div class="modul-nr">MODUL 04 // ZERO-STORAGE SECURITY</div>'
+            '<h4>Maximale Datensicherheit</h4>'
+            '<p>Keine Archivierung auf Servern, keine Weitergabe, kein KI-Training: '
             'Ihr Modell wird flüchtig im Arbeitsspeicher auf '
             + ('deutschen Servern ' if HOSTING_IN_DEUTSCHLAND else '')
-            + 'ausgewertet und danach sofort verworfen.</p>'
+            + 'verarbeitet und sofort verworfen.</p>'
             '</div>',
             unsafe_allow_html=True
         )
 
     st.markdown("---")
-    st.markdown("### So einfach funktioniert's")
+    st.markdown("### Workflow in drei Schritten")
     st.markdown(
-        "1. **IFC-Datei auswählen:** Klicken Sie links in der Seitenleiste auf **Browse files** und wählen Sie ein `.ifc`-Modell aus.\n"
-        "2. **Filter & eigene Preise eintragen:** Prüfen Sie in der Seitenleiste die Geschosszuordnung und hinterlegen Sie bei Bedarf eigene Einheitspreise nach DIN 276.\n"
-        "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser, laden Sie unten den fertigen **Excel-Bericht** herunter und leeren Sie bei Bedarf den Arbeitsspeicher."
+        "1. **IFC-Datei laden:** Wählen Sie links im Control Panel über **Browse files** ein `.ifc`-Gebäudemodell aus.\n"
+        "2. **Geschosse & eigene Preise konfigurieren:** Prüfen Sie die Geschossfilter in der Seitenleiste und hinterlegen Sie bei Bedarf eigene Einheitspreise nach DIN 276.\n"
+        "3. **3D-Modell prüfen & Excel exportieren:** Kontrollieren Sie die Bauteile im interaktiven 3D-Viewport, laden Sie den **Excel-Bericht** herunter und leeren Sie bei Bedarf den Arbeitsspeicher."
     )
 
     # --- Bereich "Über mich & das Projekt" ---
@@ -761,7 +969,8 @@ if not datei:
         height: 145px !important;
         max-width: 145px !important;
         border-radius: 50%;
-        border: 4px solid {AKZENT_SAND};
+        border: 3px solid {AKZENT_CYAN};
+        box-shadow: 0 0 22px rgba(0, 212, 255, 0.35);
         object-fit: cover;
         object-position: center 20%;
         image-rendering: -webkit-optimize-contrast;
@@ -906,9 +1115,9 @@ if (
 
 
 # ==============================================================================
-# 5B. INTERAKTIVE 3D-GEBÄUDEVORSCHAU (IN TYPISCHEN BIM-FARBEN)
+# 5B. INTERAKTIVE 3D-GEBÄUDEVORSCHAU (DARK-TECH CAD-VIEWPORT)
 # ==============================================================================
-with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=True):
+with st.expander("Interaktiver 3D-CAD-Viewport (OpenBIM-Modell)", expanded=True):
     meshes_3d, dreiecke_anzahl, modell_gekurzt = extrahiere_3d_meshes(ifc_bytes)
 
     if not meshes_3d:
@@ -916,7 +1125,7 @@ with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=Tr
     else:
         st.caption(
             "Steuerung: Linke Maustaste = Drehen | Rechte Maustaste = Verschieben | Mausrad = Zoomen. "
-            "Über die Auswahlfelder lassen sich oberirdische Bauteile und der unterirdische Sockel/Fundamentbereich ein- oder ausblenden:"
+            "Bauteilgruppen im CAD-Layer-Manager ein- oder ausblenden:"
         )
 
         gruppen_namen = list(BIM_FARBEN.keys())
@@ -952,27 +1161,48 @@ with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=Tr
                 name=f"{gruppe} ({meshes_3d[gruppe]['bauteile']})",
                 showlegend=True,
                 flatshading=True,
-                lighting=dict(ambient=0.65, diffuse=0.85, roughness=0.5, specular=0.2),
+                lighting=dict(ambient=0.55, diffuse=0.90, roughness=0.4, specular=0.35),
                 hovertemplate=f"<b>{gruppe}</b><br>X: %{{x:.2f}} m<br>Y: %{{y:.2f}} m<br>Z: %{{z:.2f}} m<extra></extra>",
             ))
 
         fig_3d.update_layout(
-            height=600,
+            height=620,
             margin=dict(l=0, r=0, t=10, b=0),
-            paper_bgcolor="#FAF7F2",
+            paper_bgcolor="#07101F",
+            font=dict(color=TEXT_HELL),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
                 y=1.01,
                 xanchor="left",
                 x=0,
-                bgcolor="rgba(255,255,255,0.85)"
+                bgcolor="rgba(13, 27, 48, 0.85)",
+                bordercolor="rgba(0, 212, 255, 0.35)",
+                borderwidth=1
             ),
             scene=dict(
                 aspectmode="data",
-                xaxis=dict(title="X (m)", backgroundcolor="#F5EFE6", gridcolor="#DDD3C5", showbackground=True),
-                yaxis=dict(title="Y (m)", backgroundcolor="#F5EFE6", gridcolor="#DDD3C5", showbackground=True),
-                zaxis=dict(title="Höhe Z (m)", backgroundcolor="#EDE4D7", gridcolor="#DDD3C5", showbackground=True),
+                xaxis=dict(
+                    title="X (m)",
+                    backgroundcolor="#0A172B",
+                    gridcolor="#1E3A5F",
+                    zerolinecolor=AKZENT_CYAN,
+                    showbackground=True
+                ),
+                yaxis=dict(
+                    title="Y (m)",
+                    backgroundcolor="#0A172B",
+                    gridcolor="#1E3A5F",
+                    zerolinecolor=AKZENT_CYAN,
+                    showbackground=True
+                ),
+                zaxis=dict(
+                    title="Höhe Z (m)",
+                    backgroundcolor="#0D1F38",
+                    gridcolor="#1E3A5F",
+                    zerolinecolor=AKZENT_CYAN,
+                    showbackground=True
+                ),
                 camera=dict(eye=dict(x=1.45, y=-1.45, z=0.85)),
             ),
         )
@@ -981,7 +1211,7 @@ with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=Tr
 
         if modell_gekurzt:
             st.caption(
-                f"Hinweis: Sehr detailliertes Modell – die 3D-Vorschau wurde aus Performance-Gründen "
+                f"Hinweis: Sehr detailliertes Modell – der 3D-Viewport wurde aus Performance-Gründen "
                 f"auf {dreiecke_anzahl:,} Dreiecke begrenzt (die Mengenberechnung unten ist davon nicht betroffen)."
             )
 
@@ -1358,7 +1588,7 @@ with pd.ExcelWriter(buf, engine="openpyxl") as w:
         d.to_excel(w, sheet_name=name, index=False)
     for ws in w.book.worksheets:
         for c in ws[1]:
-            c.fill = PatternFill("solid", fgColor=HAUPT_BEIGE[1:])
+            c.fill = PatternFill("solid", fgColor=EXCEL_HEADER)
             c.font = Font(color="FFFFFF", bold=True)
         for col in ws.columns:
             ws.column_dimensions[col[0].column_letter].width = min(60, max(len(str(c.value or "")) for c in col) + 3)
