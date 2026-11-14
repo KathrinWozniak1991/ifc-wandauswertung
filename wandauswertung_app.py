@@ -33,7 +33,7 @@ st.markdown(f"""<style>
 .info-box{{background:#FAF7F2;border:1px solid #E5DCCB;border-top:4px solid {HAUPT_BEIGE};padding:18px 20px;border-radius:8px;height:100%;box-shadow:0 2px 4px rgba(62,50,40,0.05)}}
 .info-box h4{{color:{TEXT_BRAUN};margin-top:0;margin-bottom:8px;font-size:1.1rem}}
 .info-box p{{color:#5C4D40;font-size:0.95rem;line-height:1.5;margin:0}}
-.ueber-mich-platzhalter{{width:135px;height:135px;border-radius:50%;border:4px solid {AKZENT_SAND};background:{HAUPT_BEIGE};color:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:bold;flex-shrink:0}}
+.ueber-mich-platzhalter{{width:145px;height:145px;border-radius:50%;border:4px solid {AKZENT_SAND};background:{HAUPT_BEIGE};color:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:bold;flex-shrink:0}}
 [data-testid="stTable"] th{{background:{HAUPT_BEIGE}!important;color:#fff!important}}
 h3{{color:{TEXT_BRAUN}}}
 </style>""", unsafe_allow_html=True)
@@ -473,7 +473,7 @@ if not datei:
         "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser und laden Sie unten den fertigen **Excel-Bericht** herunter."
     )
 
-    # --- Bereich "Über mich & das Projekt" (absturzsicher mit try/except & KW-Fallback) ---
+    # --- Bereich "Über mich & das Projekt" (gestochen scharf durch hohe Render-Auflösung) ---
     st.markdown("---")
     basis_ordner = Path(__file__).resolve().parent
     profil_pfad = next(
@@ -481,13 +481,21 @@ if not datei:
         None
     )
 
+    # CSS: Bild wird mit 450px scharf geladen, aber im Browser exakt als 145x145px Kreis dargestellt
     st.markdown(f"""<style>
+    [data-testid="stImage"] {{
+        display: flex;
+        justify-content: center;
+    }}
     [data-testid="stImage"] img {{
+        width: 145px !important;
+        height: 145px !important;
+        max-width: 145px !important;
         border-radius: 50%;
         border: 4px solid {AKZENT_SAND};
         object-fit: cover;
-        object-position: center top;
-        aspect-ratio: 1 / 1;
+        object-position: center 20%;
+        image-rendering: -webkit-optimize-contrast;
     }}
     </style>""", unsafe_allow_html=True)
 
@@ -497,7 +505,8 @@ if not datei:
             bild_angezeigt = False
             if profil_pfad:
                 try:
-                    st.image(str(profil_pfad), width=140)
+                    # width=450 sorgt für 3-fache Pixeldichte (Retina-scharf statt 140px-Pixelbrei)
+                    st.image(str(profil_pfad), width=450)
                     bild_angezeigt = True
                 except Exception:
                     bild_angezeigt = False
