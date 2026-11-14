@@ -14,19 +14,22 @@ import ifcopenshell.util.shape as shp
 import ifcopenshell.util.unit as un
 from openpyxl.styles import Font, PatternFill
 
-# Farben: Harmonische Beige- und Sandtöne (Taupe, Warmes Beige, Creme, Dunkelbraun)
+# ==============================================================================
+# 1. DESIGN-KONFIGURATION & SEITENLAYOUT
+# ==============================================================================
 HAUPT_BEIGE = "#8C735B"   # Warmes Taupe-Braun für Kopfzeile & Tabellenköpfe
 AKZENT_SAND = "#C8B299"   # Sandbeige für Rahmen & Akzentlinien
 HELL_CREME  = "#F5EFE6"   # Helles Creme-Beige für Karten & Hintergrundboxen
 TEXT_BRAUN  = "#3E3228"   # Dunkles Espresso-Braun für hohen Kontrast
 
 st.set_page_config(page_title="bauteilauswertung-ifc", layout="wide")
+
 st.markdown(f"""<style>
 .kopf{{background:{HAUPT_BEIGE};color:#fff;padding:22px 26px;border-radius:10px;border-bottom:5px solid {AKZENT_SAND};margin-bottom:20px}}
 .kopf h1{{color:#fff;margin:0;font-size:1.75rem}}
 .kopf p{{color:#F5EFE6;margin:6px 0 0 0;font-size:1rem}}
 .karte{{background:{HELL_CREME};border-left:6px solid {HAUPT_BEIGE};padding:14px 18px;border-radius:8px;margin-bottom:10px}}
-.karte span{{color:#6E5D4F;font-size:0.9rem}} .karte b{{display:block;color:{TEXT_BRAUN};font-size:1.8rem}}
+.karte span{{color:#6E5D4F;font-size:0.85rem}} .karte b{{display:block;color:{TEXT_BRAUN};font-size:1.55rem}}
 .info-box{{background:#FAF7F2;border:1px solid #E5DCCB;border-top:4px solid {HAUPT_BEIGE};padding:18px 20px;border-radius:8px;height:100%;box-shadow:0 2px 4px rgba(62,50,40,0.05)}}
 .info-box h4{{color:{TEXT_BRAUN};margin-top:0;margin-bottom:8px;font-size:1.1rem}}
 .info-box p{{color:#5C4D40;font-size:0.95rem;line-height:1.5;margin:0}}
@@ -42,16 +45,20 @@ h3{{color:{TEXT_BRAUN}}}
 logo = Path(__file__).with_name("logo.png")
 if logo.exists():
     st.image(str(logo), width=180)
+
 st.markdown(
     '<div class="kopf">'
     '<h1>bauteilauswertung-ifc</h1>'
-    '<p>Automatisierte Mengen- und Flächenermittlung aus OpenBIM-Bestandsmodellen</p>'
+    '<p>Automatisierte Mengen-, Flächen- und Längenermittlung aus OpenBIM-Bestandsmodellen</p>'
     '</div>',
     unsafe_allow_html=True
 )
 
 
-def lade_profilbild_html():
+# ==============================================================================
+# 2. HILFSFUNKTIONEN (BILDER & 3D-GEOMETRIE-FALLBACKS)
+# ==============================================================================
+def lade_profilbild_html() -> str:
     """Lädt profil.jpg (oder profil.png) als Base64-Bild für die Über-mich-Karte."""
     for dateiname in ["profil.jpg", "profil.jpeg", "profil.png"]:
         pfad = Path(__file__).with_name(dateiname)
@@ -62,31 +69,32 @@ def lade_profilbild_html():
     return ""
 
 
-def berechne_wand(wand, settings, skala):
-    """Fehlende Seitenfläche der Wand über Geometrie-Volumen und Dicke berechnen."""
+def berechne_wand(wand, settings, skala: float):
+    """Berechnet die fehlende Seitenfläche einer Wand über Volumen / Wanddicke."""
     d = None
     try:
-        # 1. Versuch: Gesamtdicke aus den Materialschichten (IfcMaterialLayerSet) auslesen
         sch = el.get_material(wand, should_skip_usage=True)
         if sch is not None and sch.is_a("IfcMaterialLayerSet"):
             d = sum(s.LayerThickness for s in sch.MaterialLayers) * skala
     except Exception:
         pass
+
     if not d:
-        # 2. Versuch: Dicke aus dem Wandnamen extrahieren (z. B. "Wall-240" -> 0,24 m)
         t = re.search(r"Wall-(\d+)", wand.Name or "")
         d = int(t.group(1)) / 1000 if t else None
+
     if not d:
         return None
+
     try:
-        # Seitenfläche = Volumen / Wanddicke
-        return shp.get_volume(ifcopenshell.geom.create_shape(settings, wand).geometry) / d
+        volumen = shp.get_volume(ifcopenshell.geom.create_shape(settings, wand).geometry)
+        return volumen / d
     except Exception:
         return None
 
 
 def berechne_dach_geometrie(bauteil, settings):
-    """Fallback: Dachfläche (Oberseite) und Neigung aus der 3D-Geometrie ermitteln."""
+    """Fallback: Ermittelt Dachfläche (Oberseite) und mittlere Neigung aus der 3D-Geometrie."""
     try:
         geom = ifcopenshell.geom.create_shape(settings, bauteil).geometry
         verts = np.array(geom.verts).reshape(-1, 3)
@@ -101,7 +109,6 @@ def berechne_dach_geometrie(bauteil, settings):
             if norm_len == 0:
                 continue
             normal = kreuz / norm_len
-            # Nur Dreiecke berücksichtigen, deren Normale nach oben zeigt (Z > 0.1)
             if normal[2] > 0.1:
                 tri_flaeche = 0.5 * norm_len
                 flaeche_oben += tri_flaeche
@@ -110,32 +117,85 @@ def berechne_dach_geometrie(bauteil, settings):
 
         if flaeche_oben <= 0:
             return None, None
-        # Flächengewichtete mittlere Dachneigung berechnen
+
         mittlere_neigung = sum(w * a for w, a in neigungen) / flaeche_oben
         return flaeche_oben, mittlere_neigung
     except Exception:
         return None, None
 
 
-@st.cache_data(show_spinner="IFC wird ausgewertet … (Wände, Fenster & Dächer)")
+def berechne_laenge_3d(bauteil, settings, modus: str = "horizontal"):
+    """
+    Fallback für Geländer, Regenrinnen und Fallrohre:
+    Schätzt die Bauteillänge aus der 3D-Ausdehnung (Bounding Box) in Metern.
+    modus:
+      - 'horizontal': größere Ausdehnung in X oder Y (für Regenrinnen / gerade Geländer)
+      - 'diagonal': 3D-Diagonale inkl. Z (für schräge Treppengeländer)
+      - 'vertikal': Höhe in Z-Richtung (für Fallrohre)
+    """
+    try:
+        geom = ifcopenshell.geom.create_shape(settings, bauteil).geometry
+        verts = np.array(geom.verts).reshape(-1, 3)
+        if len(verts) == 0:
+            return None
+        ausdehnung = verts.max(axis=0) - verts.min(axis=0)  # [dx, dy, dz] in Metern
+        dx, dy, dz = float(ausdehnung[0]), float(ausdehnung[1]), float(ausdehnung[2])
+
+        if modus == "vertikal":
+            return dz if dz > 0.05 else None
+        if modus == "diagonal":
+            horiz = max(dx, dy)
+            return float(np.hypot(horiz, dz)) if horiz > 0.05 else None
+        # Standard: 'horizontal'
+        horiz = max(dx, dy)
+        return horiz if horiz > 0.05 else None
+    except Exception:
+        return None
+
+
+def hole_laenge_aus_psets(ps: dict, skala: float):
+    """Sucht in allen PropertySets nach typischen Längen-Eigenschaften."""
+    for pset_name, props in ps.items():
+        if not isinstance(props, dict):
+            continue
+        for key in ["Length", "NetLength", "GrossLength", "NominalLength", "Länge"]:
+            val = props.get(key)
+            if isinstance(val, (int, float)) and val > 0:
+                # Falls Wert > 100, ist er oft noch in Millimetern gespeichert
+                return val * skala if val > 100 else float(val)
+    return None
+
+
+# ==============================================================================
+# 3. HAUPTAUSWERTUNG DER IFC-DATEI
+# ==============================================================================
+@st.cache_data(show_spinner="IFC wird ausgewertet … (Wände, Fenster, Türen, Dächer, Geländer & Entwässerung)")
 def auswerten(daten: bytes, rechnen: bool):
     with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
         f.write(daten)
-    m = ifcopenshell.open(f.name)
+        tmp_pfad = Path(f.name)
+
+    try:
+        m = ifcopenshell.open(str(tmp_pfad))
+    finally:
+        tmp_pfad.unlink(missing_ok=True)
+
     skala = un.calculate_unit_scale(m)
     settings = ifcopenshell.geom.settings() if rechnen else None
 
-    # 1. Wände auswerten (IfcWall)
+    # --- 1. Wände auswerten (IfcWall) ---
     zeilen_waende = []
     for w in m.by_type("IfcWall"):
         ps = el.get_psets(w)
         q = ps.get("Qto_WallBaseQuantities") or ps.get("BaseQuantities") or {}
         fl, herkunft = q.get("NetSideArea"), "Modell"
+
         if not isinstance(fl, (int, float)):
             fl, herkunft = None, "fehlt"
             if rechnen:
                 fl = berechne_wand(w, settings, skala)
                 herkunft = "berechnet" if fl is not None else "fehlt"
+
         g = el.get_container(w)
         zeilen_waende.append({
             "Name": w.Name or "",
@@ -146,21 +206,23 @@ def auswerten(daten: bytes, rechnen: bool):
             "Herkunft": herkunft
         })
 
-    # 2. Fenster auswerten (IfcWindow)
+    # --- 2. Fenster auswerten (IfcWindow) ---
     zeilen_fenster = []
     for f in m.by_type("IfcWindow"):
         ps = el.get_psets(f)
-        b = getattr(f, "OverallWidth", None)
-        h = getattr(f, "OverallHeight", None)
-        b = b * skala if b is not None else None
-        h = h * skala if h is not None else None
+        q = ps.get("Qto_WindowBaseQuantities") or ps.get("BaseQuantities") or {}
 
-        if b is None or h is None:
-            q = ps.get("Qto_WindowBaseQuantities") or ps.get("BaseQuantities") or {}
-            b = b or q.get("Width")
-            h = h or q.get("Height")
+        b_raw = getattr(f, "OverallWidth", None)
+        h_raw = getattr(f, "OverallHeight", None)
+        b = b_raw * skala if isinstance(b_raw, (int, float)) else None
+        h = h_raw * skala if isinstance(h_raw, (int, float)) else None
 
-        fl = (b * h) if (b and h) else None
+        if b is None and isinstance(q.get("Width"), (int, float)):
+            b = q["Width"] * skala if q["Width"] > 50 else q["Width"]
+        if h is None and isinstance(q.get("Height"), (int, float)):
+            h = q["Height"] * skala if q["Height"] > 50 else q["Height"]
+
+        fl = q.get("Area") if isinstance(q.get("Area"), (int, float)) else ((b * h) if (b and h) else None)
         g = el.get_container(f)
 
         zeilen_fenster.append({
@@ -168,16 +230,47 @@ def auswerten(daten: bytes, rechnen: bool):
             "GlobalId": f.GlobalId,
             "Geschoss": g.Name if g else "ohne Geschoss",
             "ist_aussen": ps.get("Pset_WindowCommon", {}).get("IsExternal") is True,
-            "Breite (m)": b,
-            "Höhe (m)": h,
+            "Breite (m)": round(b, 3) if isinstance(b, (int, float)) else None,
+            "Höhe (m)": round(h, 3) if isinstance(h, (int, float)) else None,
             "Fläche (m²)": fl
         })
 
-    # 3. Dächer auswerten (IfcRoof und IfcSlab mit PredefinedType == ROOF)
+    # --- 3. Türen auswerten (IfcDoor) ---
+    zeilen_tueren = []
+    for t in m.by_type("IfcDoor"):
+        ps = el.get_psets(t)
+        q = ps.get("Qto_DoorBaseQuantities") or ps.get("BaseQuantities") or {}
+
+        b_raw = getattr(t, "OverallWidth", None)
+        h_raw = getattr(t, "OverallHeight", None)
+        b = b_raw * skala if isinstance(b_raw, (int, float)) else None
+        h = h_raw * skala if isinstance(h_raw, (int, float)) else None
+
+        if b is None and isinstance(q.get("Width"), (int, float)):
+            b = q["Width"] * skala if q["Width"] > 50 else q["Width"]
+        if h is None and isinstance(q.get("Height"), (int, float)):
+            h = q["Height"] * skala if q["Height"] > 50 else q["Height"]
+
+        fl = q.get("Area") if isinstance(q.get("Area"), (int, float)) else ((b * h) if (b and h) else None)
+        g = el.get_container(t)
+        typ_obj = el.get_type(t)
+        typ_name = typ_obj.Name if typ_obj and typ_obj.Name else ""
+
+        zeilen_tueren.append({
+            "Name": t.Name or "Tür",
+            "Typ": typ_name,
+            "GlobalId": t.GlobalId,
+            "Geschoss": g.Name if g else "ohne Geschoss",
+            "ist_aussen": ps.get("Pset_DoorCommon", {}).get("IsExternal") is True,
+            "Breite (m)": round(b, 3) if isinstance(b, (int, float)) else None,
+            "Höhe (m)": round(h, 3) if isinstance(h, (int, float)) else None,
+            "Fläche (m²)": fl
+        })
+
+    # --- 4. Dächer auswerten (IfcRoof und IfcSlab mit PredefinedType == ROOF) ---
     zeilen_daecher = []
     dach_kandidaten = []
 
-    # Alle IfcRoof prüfen: Wenn ein IfcRoof Unterelemente (Teile) hat, nehmen wir nur die Teile (Doppelzählung vermeiden)
     for r in m.by_type("IfcRoof"):
         teile = el.get_parts(r)
         if teile:
@@ -188,7 +281,6 @@ def auswerten(daten: bytes, rechnen: bool):
             if r not in dach_kandidaten:
                 dach_kandidaten.append(r)
 
-    # Zusätzlich alle Deckenplatten (IfcSlab) aufnehmen, die als Dach (ROOF) deklariert sind
     for s in m.by_type("IfcSlab"):
         if getattr(s, "PredefinedType", None) == "ROOF" and s not in dach_kandidaten:
             dach_kandidaten.append(s)
@@ -201,15 +293,12 @@ def auswerten(daten: bytes, rechnen: bool):
             or ps.get("BaseQuantities")
             or {}
         )
-        # Nettofläche bevorzugen, sonst Bruttofläche
         fl = q.get("NetArea") if isinstance(q.get("NetArea"), (int, float)) else q.get("GrossArea")
         herkunft = "Modell" if isinstance(fl, (int, float)) else "fehlt"
 
-        # Dachneigung aus Pset_RoofCommon oder Pset_SlabCommon auslesen
         pset_common = ps.get("Pset_RoofCommon") or ps.get("Pset_SlabCommon") or {}
         neigung = pset_common.get("PitchAngle")
 
-        # Fallback über 3D-Geometrie, falls Fläche oder Neigung im Modell fehlt
         if (fl is None or neigung is None) and rechnen:
             fl_geo, neig_geo = berechne_dach_geometrie(d, settings)
             if fl is None and fl_geo is not None:
@@ -218,7 +307,6 @@ def auswerten(daten: bytes, rechnen: bool):
             if neigung is None and neig_geo is not None:
                 neigung = neig_geo
 
-        # Dachform bestimmen (Flachdach < 5° Neigung vs. Geneigtes Dach)
         if isinstance(neigung, (int, float)):
             dachform = "Flachdach" if neigung < 5.0 else "Geneigtes Dach"
         else:
@@ -236,33 +324,120 @@ def auswerten(daten: bytes, rechnen: bool):
             "Herkunft": herkunft
         })
 
-    return pd.DataFrame(zeilen_waende), pd.DataFrame(zeilen_fenster), pd.DataFrame(zeilen_daecher)
+    # --- 5. Geländer auswerten (IfcRailing) ---
+    zeilen_gelaender = []
+    for r in m.by_type("IfcRailing"):
+        ps = el.get_psets(r)
+        predef = (getattr(r, "PredefinedType", None) or "").upper()
+        name_str = r.Name or "Geländer"
+        suchtext = f"{name_str} {predef}".lower()
+
+        # Einordnung: Treppengeländer vs. Absturzgeländer an Fenstern
+        if predef == "STAIR" or any(k in suchtext for k in ["treppe", "stair", "handlauf"]):
+            gelaender_art = "Treppengeländer"
+            geo_modus = "diagonal"
+        elif any(k in suchtext for k in ["fenster", "absturz", "franz", "brüstung", "window", "balustrade"]):
+            gelaender_art = "Absturzgeländer (Fenster)"
+            geo_modus = "horizontal"
+        else:
+            # Außenliegende Geländer ohne Treppenbezug sind im Bestand meist Absturzsicherungen
+            ist_aussen = ps.get("Pset_RailingCommon", {}).get("IsExternal") is True
+            gelaender_art = "Absturzgeländer (Fenster)" if ist_aussen else "Treppengeländer"
+            geo_modus = "horizontal" if ist_aussen else "diagonal"
+
+        laenge = hole_laenge_aus_psets(ps, skala)
+        herkunft = "Modell" if laenge is not None else "fehlt"
+
+        if laenge is None and rechnen:
+            laenge = berechne_laenge_3d(r, settings, modus=geo_modus)
+            herkunft = "berechnet" if laenge is not None else "fehlt"
+
+        g = el.get_container(r)
+        zeilen_gelaender.append({
+            "Name": name_str,
+            "GlobalId": r.GlobalId,
+            "Geschoss": g.Name if g else "ohne Geschoss",
+            "Geländerart": gelaender_art,
+            "Länge (m)": round(laenge, 2) if isinstance(laenge, (int, float)) else None,
+            "Herkunft": herkunft
+        })
+
+    # --- 6. Regenrinnen & Fallrohre auswerten (IfcPipeSegment / IfcFlowSegment) ---
+    zeilen_entwaesserung = []
+    rohr_kandidaten = m.by_type("IfcPipeSegment") or m.by_type("IfcFlowSegment")
+
+    for p in rohr_kandidaten:
+        ps = el.get_psets(p)
+        predef = (getattr(p, "PredefinedType", None) or "").upper()
+        name_str = p.Name or ""
+        typ_obj = el.get_type(p)
+        typ_name = typ_obj.Name if typ_obj and typ_obj.Name else ""
+        suchtext = f"{name_str} {typ_name} {predef}".lower()
+
+        # Prüfen, ob es sich um Dachentwässerung handelt (Rinne oder Fallrohr)
+        ist_rinne = predef == "GUTTER" or any(k in suchtext for k in ["rinne", "dachrinne", "gutter", "kastenrinne", "halbrund"])
+        ist_fallrohr = predef == "DOWNPIPE" or any(k in suchtext for k in ["fallrohr", "regenrohr", "downpipe", "rainwater"])
+
+        # Falls das Modell nur allgemein Entwässerungsrohre führt, diese ebenfalls erfassen
+        if not (ist_rinne or ist_fallrohr):
+            continue
+
+        bauteil_art = "Regenrinne" if ist_rinne else "Fallrohr"
+        geo_modus = "horizontal" if ist_rinne else "vertikal"
+
+        laenge = hole_laenge_aus_psets(ps, skala)
+        herkunft = "Modell" if laenge is not None else "fehlt"
+
+        if laenge is None and rechnen:
+            laenge = berechne_laenge_3d(p, settings, modus=geo_modus)
+            herkunft = "berechnet" if laenge is not None else "fehlt"
+
+        g = el.get_container(p)
+        zeilen_entwaesserung.append({
+            "Name": name_str or bauteil_art,
+            "Typ": typ_name,
+            "GlobalId": p.GlobalId,
+            "Geschoss": g.Name if g else "ohne Geschoss",
+            "Bauteilart": bauteil_art,
+            "Länge (m)": round(laenge, 2) if isinstance(laenge, (int, float)) else None,
+            "Herkunft": herkunft
+        })
+
+    return (
+        pd.DataFrame(zeilen_waende),
+        pd.DataFrame(zeilen_fenster),
+        pd.DataFrame(zeilen_tueren),
+        pd.DataFrame(zeilen_daecher),
+        pd.DataFrame(zeilen_gelaender),
+        pd.DataFrame(zeilen_entwaesserung)
+    )
 
 
+# ==============================================================================
+# 4. SEITENLEISTE & STARTSEITE
+# ==============================================================================
 with st.sidebar:
     st.header("Einstellungen")
     datei = st.file_uploader("IFC-Modell hochladen", type="ifc")
-    rechnen = st.checkbox("Fehlende Flächen aus Geometrie berechnen", value=True)
+    rechnen = st.checkbox("Fehlende Maße aus 3D-Geometrie berechnen", value=True)
 
-# --- STARTSEITE (wird angezeigt, solange noch keine IFC-Datei hochgeladen wurde) ---
 if not datei:
     st.markdown("### Willkommen bei bauteilauswertung-ifc")
     st.write(
         "Diese Web-Anwendung wertet digitale Gebäudemodelle im offenen **IFC-Format (OpenBIM)** "
         "automatisiert aus. Sie wurde speziell entwickelt, um Bestandsgebäude im Wohnungsbau "
         "schnell, transparent und zuverlässig für **Modernisierungs- und Sanierungsmaßnahmen** "
-        "(z. B. Fassadendämmung, Fenstertausch und Dachsanierung) zu analysieren."
+        "(Fassade, Fenster, Türen, Dach, Geländer und Dachentwässerung) zu analysieren."
     )
 
-    # 3 Vorteilskarten nebeneinander
     v1, v2, v3 = st.columns(3)
     with v1:
         st.markdown(
             '<div class="info-box">'
             '<h4>1. Schnelle Mengen statt Handarbeit</h4>'
-            '<p>Kein mühsames manuelles Zusammensuchen in CAD- oder Viewer-Programmen: '
-            'Fassaden-, Sockel-, Fenster- und Dachflächen stehen wenige Sekunden nach dem Upload '
-            'übersichtlich nach Geschossen sortiert bereit.</p>'
+            '<p>Kein mühsames Zusammensuchen in CAD- oder Viewer-Programmen: '
+            'Fassaden-, Sockel-, Fenster-, Tür- und Dachmengen sowie Geländer- und Rinnenlängen '
+            'stehen wenige Sekunden nach dem Upload bereit.</p>'
             '</div>',
             unsafe_allow_html=True
         )
@@ -270,8 +445,8 @@ if not datei:
         st.markdown(
             '<div class="info-box">'
             '<h4>2. Intelligente Geometrie-Prüfung</h4>'
-            '<p>Fehlen in einem Bestandsmodell einmal Flächenangaben in den Eigenschaften, '
-            'berechnet die App diese automatisch direkt aus der 3D-Geometrie nach – und weist '
+            '<p>Fehlen in einem Bestandsmodell Flächen- oder Längenangaben in den Eigenschaften, '
+            'berechnet die App diese automatisch aus der 3D-Geometrie nach – und weist '
             'transparent aus, welche Werte aus dem Modell stammen.</p>'
             '</div>',
             unsafe_allow_html=True
@@ -291,11 +466,10 @@ if not datei:
     st.markdown("### So einfach funktioniert's")
     st.markdown(
         "1. **IFC-Datei auswählen:** Klicken Sie links in der Seitenleiste auf **Browse files** und wählen Sie ein `.ifc`-Modell aus.\n"
-        "2. **Filter anpassen:** Legen Sie bei Bedarf fest, welche Geschosse zur Fassadendämmung zählen oder wie Sockel und Fundamente erkannt werden.\n"
+        "2. **Filter anpassen:** Prüfen Sie in der Seitenleiste die Zuordnung von Geschossen, Sockeln und Türarten.\n"
         "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser und laden Sie unten den fertigen **Excel-Bericht** herunter."
     )
 
-    # Bereich "Über mich" mit rundem Portraitfoto
     profil_html = lade_profilbild_html()
     st.markdown(
         f'<div class="ueber-mich">'
@@ -314,10 +488,13 @@ if not datei:
         unsafe_allow_html=True
     )
     st.stop()
-# --- ENDE STARTSEITE ---
 
-df_waende, df_fenster, df_daecher = auswerten(datei.getvalue(), rechnen)
-geschosse_waende = sorted(df_waende["Geschoss"].unique())
+
+# ==============================================================================
+# 5. FILTER, KATEGORISIERUNG & KENNZAHLEN
+# ==============================================================================
+df_waende, df_fenster, df_tueren, df_daecher, df_gelaender, df_entwaesserung = auswerten(datei.getvalue(), rechnen)
+geschosse_waende = sorted(df_waende["Geschoss"].unique()) if not df_waende.empty else []
 
 with st.sidebar:
     st.subheader("Wandauswertung")
@@ -336,8 +513,14 @@ with st.sidebar:
     )
     st.caption("Achtung: Sockelschichten können sich überlagern, ggf. einzelne abwählen.")
 
+    st.subheader("Türauswertung (Suchbegriffe)")
+    keller_kw = st.text_input("Kellergeschoss erkennen an", "keller, ug, untergeschoss, basement")
+    dg_kw = st.text_input("Dachgeschoss erkennen an", "dachgeschoss, dg, spitzboden, attic")
+    we_kw = st.text_input("Wohnungseingang erkennen an (Name/Typ)", "we, wohnungseingang, wohnungsabschluss")
+    he_kw = st.text_input("Hauseingang erkennen an (Name/Typ)", "haustür, hauseingang, eingangstür")
 
-def kategorie(r):
+
+def kategorie_wand(r):
     if not r.ist_aussen:
         return "Innenwand"
     if any(k.strip().lower() in r.Geschoss.lower() for k in fund_kw.split(",") if k.strip()):
@@ -347,30 +530,82 @@ def kategorie(r):
     return "Außenwand Fassade" if r.Geschoss in dämm else "Außenwand sonstige"
 
 
-df_waende["Kategorie"] = df_waende.apply(kategorie, axis=1)
+def kategorie_tuer(r):
+    """Ordnet jede Tür einer der 6 definierten Türarten zu."""
+    geschoss_low = str(r.Geschoss).lower()
+    name_typ_low = f"{r.Name} {r.Typ}".lower()
+
+    ist_keller = any(k.strip().lower() in geschoss_low for k in keller_kw.split(",") if k.strip())
+    ist_dg = any(k.strip().lower() in geschoss_low for k in dg_kw.split(",") if k.strip())
+    ist_we = any(k.strip().lower() in name_typ_low for k in we_kw.split(",") if k.strip())
+    ist_he = any(k.strip().lower() in name_typ_low for k in he_kw.split(",") if k.strip())
+
+    # 1. Außentüren unterscheiden (Kelleraußentür vs. Hauseingangstür)
+    if r.ist_aussen or ist_he:
+        if ist_keller and not ist_he:
+            return "Kelleraußentür"
+        return "Hauseingangstür"
+
+    # 2. Innentüren nach Funktion & Geschoss unterscheiden
+    if ist_we:
+        return "Wohnungseingangstür"
+    if ist_keller:
+        return "Kellertür"
+    if ist_dg:
+        return "Dachgeschosstür"
+    return "Wohnungsinnentür"
+
+
+df_waende["Kategorie"] = df_waende.apply(kategorie_wand, axis=1)
 df_waende["F_ber"] = df_waende["Fläche"].where(df_waende["Herkunft"] == "berechnet", 0)
 df_waende["ohne"] = df_waende["Fläche"].isna()
+
+if not df_tueren.empty:
+    df_tueren["Türart"] = df_tueren.apply(kategorie_tuer, axis=1)
 
 fassade = df_waende.loc[df_waende.Kategorie == "Außenwand Fassade"]
 sockel = df_waende.loc[(df_waende.Kategorie == "Sockel (oberirdisch)") & df_waende.Sockelmaterial.isin(sock_mat)]
 
 dach_gesamt = df_daecher["Fläche (m²)"].sum() if not df_daecher.empty else 0.0
 fenster_gesamt = df_fenster["Fläche (m²)"].sum() if not df_fenster.empty else 0.0
+tueren_anzahl = len(df_tueren)
+gelaender_gesamt = df_gelaender["Länge (m)"].sum() if not df_gelaender.empty else 0.0
+rinnen_gesamt = (
+    df_entwaesserung.loc[df_entwaesserung["Bauteilart"] == "Regenrinne", "Länge (m)"].sum()
+    if not df_entwaesserung.empty else 0.0
+)
+fallrohre_gesamt = (
+    df_entwaesserung.loc[df_entwaesserung["Bauteilart"] == "Fallrohr", "Länge (m)"].sum()
+    if not df_entwaesserung.empty else 0.0
+)
 
-# Kennzahlen-Karten in 4 Spalten
-c1, c2, c3, c4 = st.columns(4)
-c1.markdown(f'<div class="karte"><span>Fassadendämmung (netto)</span><b>{fassade.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
-c2.markdown(f'<div class="karte"><span>Sockeldämmung (netto)</span><b>{sockel.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
-c3.markdown(f'<div class="karte"><span>Fensterfläche ({len(df_fenster)} Stk.)</span><b>{fenster_gesamt:,.1f} m²</b></div>', unsafe_allow_html=True)
-c4.markdown(f'<div class="karte"><span>Dachfläche ({len(df_daecher)} Teilfl.)</span><b>{dach_gesamt:,.1f} m²</b></div>', unsafe_allow_html=True)
+# Kennzahlen-Karten in 2 Reihen à 3 Spalten (übersichtlich auf Desktop)
+k1, k2, k3 = st.columns(3)
+k1.markdown(f'<div class="karte"><span>Fassadendämmung (netto)</span><b>{fassade.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
+k2.markdown(f'<div class="karte"><span>Sockeldämmung (netto)</span><b>{sockel.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
+k3.markdown(f'<div class="karte"><span>Dachfläche ({len(df_daecher)} Teilfl.)</span><b>{dach_gesamt:,.1f} m²</b></div>', unsafe_allow_html=True)
+
+k4, k5, k6 = st.columns(3)
+k4.markdown(f'<div class="karte"><span>Fenster ({len(df_fenster)} Stk.) & Türen ({tueren_anzahl} Stk.)</span><b>{fenster_gesamt:,.1f} m² | {tueren_anzahl} Türen</b></div>', unsafe_allow_html=True)
+k5.markdown(f'<div class="karte"><span>Geländer gesamt ({len(df_gelaender)} Stk.)</span><b>{gelaender_gesamt:,.1f} m</b></div>', unsafe_allow_html=True)
+k6.markdown(f'<div class="karte"><span>Regenrinnen / Fallrohre</span><b>{rinnen_gesamt:,.1f} m / {fallrohre_gesamt:,.1f} m</b></div>', unsafe_allow_html=True)
 
 fehlt = int(fassade.ohne.sum() + sockel.ohne.sum())
 if fehlt:
     st.warning(f"{fehlt} Wände der Dämmflächen haben keine Fläche und fehlen in der Summe.")
-if (df_waende.Herkunft == "berechnet").any() or (not df_daecher.empty and (df_daecher.Herkunft == "berechnet").any()):
-    st.caption("Teile der Flächen wurden aus der 3D-Geometrie berechnet (Spalte „Herkunft“).")
+if (
+    (df_waende.Herkunft == "berechnet").any()
+    or (not df_daecher.empty and (df_daecher.Herkunft == "berechnet").any())
+    or (not df_gelaender.empty and (df_gelaender.Herkunft == "berechnet").any())
+    or (not df_entwaesserung.empty and (df_entwaesserung.Herkunft == "berechnet").any())
+):
+    st.caption("Teile der Maße wurden aus der 3D-Geometrie berechnet (Spalte „Herkunft“).")
 
-# Zusammenfassung Wände
+
+# ==============================================================================
+# 6. TABELLEN & EXCEL-EXPORT
+# ==============================================================================
+# --- Wände ---
 zus_waende = df_waende.groupby("Kategorie").agg(
     Anzahl=("Name", "size"),
     Fläche=("Fläche", "sum"),
@@ -384,29 +619,10 @@ zus_waende = zus_waende.rename(columns={
     "ohne_Fläche": "Wände ohne Fläche"
 }).reset_index()
 
-# Zusammenfassung Fenster pro Geschoss
-if not df_fenster.empty:
-    zus_fenster = df_fenster.groupby("Geschoss").agg(
-        Anzahl=("Name", "size"),
-        Fläche=("Fläche (m²)", "sum")
-    ).reset_index()
-    zus_fenster.loc[len(zus_fenster)] = ["Gesamt", zus_fenster["Anzahl"].sum(), zus_fenster["Fläche"].sum()]
-else:
-    zus_fenster = pd.DataFrame(columns=["Geschoss", "Anzahl", "Fläche (m²)"])
-
-# Zusammenfassung Dächer nach Dachform
-if not df_daecher.empty:
-    zus_daecher = df_daecher.groupby("Dachform").agg(
-        Anzahl=("Name", "size"),
-        Fläche=("Fläche (m²)", "sum")
-    ).reset_index()
-    zus_daecher.loc[len(zus_daecher)] = ["Gesamt", zus_daecher["Anzahl"].sum(), zus_daecher["Fläche"].sum()]
-else:
-    zus_daecher = pd.DataFrame(columns=["Dachform", "Anzahl", "Fläche (m²)"])
-
 df_waende["innen"], df_waende["aussen"] = ~df_waende.ist_aussen, df_waende.ist_aussen
 df_waende["sock"], df_waende["fund"] = df_waende.Kategorie.str.startswith("Sockel"), df_waende.Kategorie.str.startswith("Fundament")
 df_waende["F_innen"], df_waende["F_aussen"] = df_waende.Fläche.where(df_waende.innen, 0), df_waende.Fläche.where(df_waende.aussen, 0)
+
 geo_waende = df_waende.groupby("Geschoss").agg(
     Innenwände=("innen", "sum"),
     Außenwände=("aussen", "sum"),
@@ -423,12 +639,98 @@ geo_waende = geo_waende.rename(columns={
     "Fläche_außen": "Fläche außen (m²)"
 }).reset_index()
 
+# --- Fenster ---
+if not df_fenster.empty:
+    zus_fenster = df_fenster.groupby("Geschoss").agg(
+        Anzahl=("Name", "size"),
+        Fläche=("Fläche (m²)", "sum")
+    ).reset_index()
+    zus_fenster.loc[len(zus_fenster)] = ["Gesamt", zus_fenster["Anzahl"].sum(), zus_fenster["Fläche"].sum()]
+else:
+    zus_fenster = pd.DataFrame(columns=["Geschoss", "Anzahl", "Fläche (m²)"])
+
+# --- Türen (nach den 6 Türarten) ---
+tuer_reihenfolge = [
+    "Wohnungsinnentür",
+    "Wohnungseingangstür",
+    "Kellertür",
+    "Dachgeschosstür",
+    "Kelleraußentür",
+    "Hauseingangstür"
+]
+if not df_tueren.empty:
+    zus_tueren = df_tueren.groupby("Türart").agg(
+        Anzahl=("Name", "size"),
+        Fläche=("Fläche (m²)", "sum")
+    ).reindex(tuer_reihenfolge, fill_value=0).reset_index()
+    zus_tueren.loc[len(zus_tueren)] = ["Gesamt", zus_tueren["Anzahl"].sum(), zus_tueren["Fläche"].sum()]
+    zus_tueren = zus_tueren.rename(columns={"Fläche": "Fläche (m²)"})
+else:
+    zus_tueren = pd.DataFrame(columns=["Türart", "Anzahl", "Fläche (m²)"])
+
+# --- Dächer ---
+if not df_daecher.empty:
+    zus_daecher = df_daecher.groupby("Dachform").agg(
+        Anzahl=("Name", "size"),
+        Fläche=("Fläche (m²)", "sum")
+    ).reset_index()
+    zus_daecher.loc[len(zus_daecher)] = ["Gesamt", zus_daecher["Anzahl"].sum(), zus_daecher["Fläche"].sum()]
+else:
+    zus_daecher = pd.DataFrame(columns=["Dachform", "Anzahl", "Fläche (m²)"])
+
+# --- Geländer (Treppengeländer vs. Absturzgeländer) ---
+if not df_gelaender.empty:
+    zus_gelaender = df_gelaender.groupby("Geländerart").agg(
+        Anzahl=("Name", "size"),
+        Länge=("Länge (m)", "sum")
+    ).reset_index()
+    zus_gelaender.loc[len(zus_gelaender)] = ["Gesamt", zus_gelaender["Anzahl"].sum(), zus_gelaender["Länge"].sum()]
+    zus_gelaender = zus_gelaender.rename(columns={"Länge": "Länge (m)"})
+else:
+    zus_gelaender = pd.DataFrame(columns=["Geländerart", "Anzahl", "Länge (m)"])
+
+# --- Regenrinnen & Fallrohre ---
+if not df_entwaesserung.empty:
+    zus_entwaesserung = df_entwaesserung.groupby("Bauteilart").agg(
+        Anzahl=("Name", "size"),
+        Länge=("Länge (m)", "sum")
+    ).reset_index()
+    zus_entwaesserung.loc[len(zus_entwaesserung)] = ["Gesamt", zus_entwaesserung["Anzahl"].sum(), zus_entwaesserung["Länge"].sum()]
+    zus_entwaesserung = zus_entwaesserung.rename(columns={"Länge": "Länge (m)"})
+else:
+    zus_entwaesserung = pd.DataFrame(columns=["Bauteilart", "Anzahl", "Länge (m)"])
+
+# --- Einzeltabellen vorbereiten ---
 detail_waende = df_waende[["Name", "GlobalId", "Geschoss", "Kategorie", "Fläche", "Herkunft"]].rename(columns={"Fläche": "Fläche (m²)"})
-detail_fenster = df_fenster[["Name", "GlobalId", "Geschoss", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"]] if not df_fenster.empty else pd.DataFrame()
-detail_daecher = df_daecher[["Name", "IFC-Klasse", "GlobalId", "Geschoss", "Dachform", "Neigung (°)", "Fläche (m²)", "Herkunft"]] if not df_daecher.empty else pd.DataFrame()
+detail_fenster = (
+    df_fenster[["Name", "GlobalId", "Geschoss", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"]]
+    if not df_fenster.empty
+    else pd.DataFrame(columns=["Name", "GlobalId", "Geschoss", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"])
+)
+detail_tueren = (
+    df_tueren[["Name", "Typ", "GlobalId", "Geschoss", "Türart", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"]]
+    if not df_tueren.empty
+    else pd.DataFrame(columns=["Name", "Typ", "GlobalId", "Geschoss", "Türart", "ist_aussen", "Breite (m)", "Höhe (m)", "Fläche (m²)"])
+)
+detail_daecher = (
+    df_daecher[["Name", "IFC-Klasse", "GlobalId", "Geschoss", "Dachform", "Neigung (°)", "Fläche (m²)", "Herkunft"]]
+    if not df_daecher.empty
+    else pd.DataFrame(columns=["Name", "IFC-Klasse", "GlobalId", "Geschoss", "Dachform", "Neigung (°)", "Fläche (m²)", "Herkunft"])
+)
+detail_gelaender = (
+    df_gelaender[["Name", "GlobalId", "Geschoss", "Geländerart", "Länge (m)", "Herkunft"]]
+    if not df_gelaender.empty
+    else pd.DataFrame(columns=["Name", "GlobalId", "Geschoss", "Geländerart", "Länge (m)", "Herkunft"])
+)
+detail_entwaesserung = (
+    df_entwaesserung[["Name", "Typ", "GlobalId", "Geschoss", "Bauteilart", "Länge (m)", "Herkunft"]]
+    if not df_entwaesserung.empty
+    else pd.DataFrame(columns=["Name", "Typ", "GlobalId", "Geschoss", "Bauteilart", "Länge (m)", "Herkunft"])
+)
 
 fmt = lambda t: t.style.hide(axis="index").format(precision=1)
 
+# --- Anzeige im Browser ---
 st.markdown("### Wände: Zusammenfassung")
 st.table(fmt(zus_waende))
 st.markdown("### Wände: Pro Geschoss")
@@ -440,45 +742,83 @@ if not zus_fenster.empty:
 else:
     st.info("Keine Fenster (IfcWindow) im Modell gefunden.")
 
+st.markdown("### Türen: Zusammenfassung nach Türart")
+if not zus_tueren.empty:
+    st.table(fmt(zus_tueren))
+else:
+    st.info("Keine Türen (IfcDoor) im Modell gefunden.")
+
 st.markdown("### Dächer: Zusammenfassung")
 if not zus_daecher.empty:
     st.table(fmt(zus_daecher))
 else:
     st.info("Keine Dachflächen (IfcRoof / IfcSlab mit PredefinedType ROOF) im Modell gefunden.")
 
-with st.expander("Alle Wände einzeln"):
-    st.dataframe(detail_waende, use_container_width=True, hide_index=True)
-with st.expander("Alle Fenster einzeln"):
-    st.dataframe(detail_fenster, use_container_width=True, hide_index=True)
-with st.expander("Alle Dächer einzeln"):
-    st.dataframe(detail_daecher, use_container_width=True, hide_index=True)
+st.markdown("### Geländer: Zusammenfassung")
+if not zus_gelaender.empty:
+    st.table(fmt(zus_gelaender))
+else:
+    st.info("Keine Geländer (IfcRailing) im Modell gefunden.")
 
+st.markdown("### Regenrinnen & Fallrohre: Zusammenfassung")
+if not zus_entwaesserung.empty:
+    st.table(fmt(zus_entwaesserung))
+else:
+    st.info("Keine Regenrinnen oder Fallrohre (IfcPipeSegment / IfcFlowSegment) im Modell gefunden.")
+
+with st.expander("Alle Wände einzeln"):
+    st.dataframe(detail_waende, width="stretch", hide_index=True)
+with st.expander("Alle Fenster einzeln"):
+    st.dataframe(detail_fenster, width="stretch", hide_index=True)
+with st.expander("Alle Türen einzeln"):
+    st.dataframe(detail_tueren, width="stretch", hide_index=True)
+with st.expander("Alle Dächer einzeln"):
+    st.dataframe(detail_daecher, width="stretch", hide_index=True)
+with st.expander("Alle Geländer einzeln"):
+    st.dataframe(detail_gelaender, width="stretch", hide_index=True)
+with st.expander("Alle Regenrinnen & Fallrohre einzeln"):
+    st.dataframe(detail_entwaesserung, width="stretch", hide_index=True)
+
+# --- Gesamtübersicht & Excel-Export ---
 ergebnis = pd.DataFrame({
     "Ergebnis": [
         "Fassadendämmung netto (m²)",
         "Sockeldämmung netto (m²)",
         "Fensterfläche gesamt (m²)",
-        "Dachfläche gesamt (m²)"
+        "Türen gesamt (Anzahl)",
+        "Dachfläche gesamt (m²)",
+        "Geländer gesamt (m)",
+        "Regenrinnen gesamt (m)",
+        "Fallrohre gesamt (m)"
     ],
     "Wert": [
         round(fassade.Fläche.sum(), 1),
         round(sockel.Fläche.sum(), 1),
         round(fenster_gesamt, 1),
-        round(dach_gesamt, 1)
+        int(tueren_anzahl),
+        round(dach_gesamt, 1),
+        round(gelaender_gesamt, 1),
+        round(rinnen_gesamt, 1),
+        round(fallrohre_gesamt, 1)
     ]
 })
-buf = io.BytesIO()
 
-# Strukturierter Excel-Export mit eigenen Reitern im passenden Beige-Design
+buf = io.BytesIO()
 sheets = {
     "Ergebnis": ergebnis,
     "Wände Zusammenfassung": zus_waende,
     "Wände pro Geschoss": geo_waende,
     "Fenster Zusammenfassung": zus_fenster,
+    "Türen Zusammenfassung": zus_tueren,
     "Dächer Zusammenfassung": zus_daecher,
+    "Geländer Zusammenfassung": zus_gelaender,
+    "Rinnen & Fallrohre": zus_entwaesserung,
     "Alle Wände": detail_waende,
     "Alle Fenster": detail_fenster,
-    "Alle Dächer": detail_daecher
+    "Alle Türen": detail_tueren,
+    "Alle Dächer": detail_daecher,
+    "Alle Geländer": detail_gelaender,
+    "Alle Rinnen & Fallrohre": detail_entwaesserung
 }
 
 with pd.ExcelWriter(buf, engine="openpyxl") as w:
@@ -486,7 +826,8 @@ with pd.ExcelWriter(buf, engine="openpyxl") as w:
         d.to_excel(w, sheet_name=name, index=False)
     for ws in w.book.worksheets:
         for c in ws[1]:
-            c.fill, c.font = PatternFill("solid", fgColor=HAUPT_BEIGE[1:]), Font(color="FFFFFF", bold=True)
+            c.fill = PatternFill("solid", fgColor=HAUPT_BEIGE[1:])
+            c.font = Font(color="FFFFFF", bold=True)
         for col in ws.columns:
             ws.column_dimensions[col[0].column_letter].width = min(60, max(len(str(c.value or "")) for c in col) + 3)
 
