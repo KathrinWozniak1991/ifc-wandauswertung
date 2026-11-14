@@ -23,13 +23,13 @@ AKZENT_SAND = "#C8B299"   # Sandbeige für Rahmen & Akzentlinien
 HELL_CREME  = "#F5EFE6"   # Helles Creme-Beige für Karten & Hintergrundboxen
 TEXT_BRAUN  = "#3E3228"   # Dunkles Espresso-Braun für hohen Kontrast
 
-# Typische OpenBIM- / Solibri-Farben für die 3D-Gebäudevorschau
-# Unterteilt in oberirdischen Sockel und unterirdischen Sockel / Fundament (im Erdreich)
+# OpenBIM-Farbschema für die 3D-Gebäudevorschau:
+# Außenwände in ruhigem Sand-Beige; klare Abstufung zwischen Fassade, Sockel und Fundament
 BIM_FARBEN = {
-    "Außenwände & Fassade":         {"farbe": "#D9A760", "deckkraft": 1.00, "standard_an": True},
-    "Sockel (oberirdisch)":         {"farbe": "#7F868F", "deckkraft": 1.00, "standard_an": True},
+    "Außenwände & Fassade":         {"farbe": "#E6D7C3", "deckkraft": 1.00, "standard_an": True},
+    "Sockel (oberirdisch)":         {"farbe": "#8C929A", "deckkraft": 1.00, "standard_an": True},
     "Fundament & Erdreich-Sockel":  {"farbe": "#4A4E54", "deckkraft": 1.00, "standard_an": True},
-    "Innenwände":                   {"farbe": "#C8CCD1", "deckkraft": 0.85, "standard_an": False},
+    "Innenwände":                   {"farbe": "#D0D4D9", "deckkraft": 0.85, "standard_an": False},
     "Dachflächen":                  {"farbe": "#B84A39", "deckkraft": 1.00, "standard_an": True},
     "Fenster":                      {"farbe": "#5DADE2", "deckkraft": 0.45, "standard_an": True},
     "Türen":                        {"farbe": "#8B5A2B", "deckkraft": 1.00, "standard_an": True},
@@ -153,12 +153,41 @@ def hole_laenge_aus_psets(ps: dict, skala: float):
     return None
 
 
+def _hole_suchtext_bauteil(bauteil) -> str:
+    """
+    Fasst Instanzname, Bauteiltyp (IfcTypeObject) und Materialnamen eines IFC-Elements
+    in einem kleingeschriebenen Suchstring zusammen, damit auch Typ- oder Schichtnamen
+    wie 'Sockel' oder 'Fundament' zuverlässig erkannt werden.
+    """
+    teile = [bauteil.Name or ""]
+    try:
+        typ_obj = el.get_type(bauteil)
+        if typ_obj and typ_obj.Name:
+            teile.append(typ_obj.Name)
+    except Exception:
+        pass
+    try:
+        mat = el.get_material(bauteil, should_skip_usage=True)
+        if mat:
+            if hasattr(mat, "Name") and mat.Name:
+                teile.append(mat.Name)
+            if mat.is_a("IfcMaterialLayerSet"):
+                teile.extend(
+                    s.Material.Name for s in mat.MaterialLayers
+                    if getattr(s, "Material", None) and s.Material.Name
+                )
+    except Exception:
+        pass
+    return " ".join(teile).lower()
+
+
 @st.cache_data(show_spinner="3D-Gebäudegeometrie wird für die Vorschau aufbereitet …")
-def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 150000):
+def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
     """
     Erzeugt pro BIM-Bauteilgruppe ein kombiniertes Dreiecksnetz (Vertices + Faces)
     in Weltkoordinaten für die interaktive Plotly-3D-Vorschau – inklusive
-    unterirdischem Sockel, Kelleraußenwänden, Fundamenten (IfcFooting) und Bodenplatten (IfcSlab).
+    oberirdischem Sockel, Kelleraußenwänden, Fundamenten (IfcFooting/Beam/Member)
+    und Bodenplatten (IfcSlab).
     """
     with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
         f.write(daten)
@@ -179,7 +208,12 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 150000):
     dreiecke_gesamt = 0
     gekurzt = False
 
-    def fuege_bauteil_hinzu(bauteil, gruppe_name: str):
+    def fuege_bauteil_hinzu(bauteil, gruppe_name: str, z_pruefung_erdreich: bool = False):
+        """
+        Trianguliert ein einzelnes IFC-Bauteil und hängt es an den Mesh-Puffer der Gruppe an.
+        Mit z_pruefung_erdreich=True werden Außenwände, deren Oberkante komplett unter Z = -0.20 m
+        liegt, automatisch als 'Fundament & Erdreich-Sockel' eingestuft.
+        """
         nonlocal dreiecke_gesamt, gekurzt
         if dreiecke_gesamt >= max_dreiecke_gesamt:
             gekurzt = True
@@ -192,6 +226,11 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 150000):
             if len(verts) == 0 or len(faces) == 0:
                 return
 
+            if z_pruefung_erdreich and gruppe_name == "Außenwände & Fassade":
+                z_max = float(verts[:, 2].max())
+                if z_max <= -0.20:
+                    gruppe_name = "Fundament & Erdreich-Sockel"
+
             puffer = gruppen_puffer[gruppe_name]
             puffer["verts"].append(verts)
             puffer["faces"].append(faces + puffer["offset"])
@@ -202,37 +241,52 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 150000):
             pass
 
     # 1. Wände (IfcWall): Unterscheidung in oberirdischen Sockel, Erdreich-Sockel/Fundament, Fassade & Innenwand
-    erdreich_gesch_kw = ["foundation", "fundament", "keller", "ug", "untergeschoss", "basement", "erdreich"]
-    erdreich_wand_kw = ["fundament", "perimeter", "erdreich", "kelleraußen", "kelleraussen", "unterirdisch"]
+    erdreich_gesch_kw = ["foundation", "fundament", "keller", "ug", "untergeschoss", "basement", "erdreich", "gründung"]
+    fundament_kw = ["fundament", "streifenfundament", "perimeter", "erdreich", "kelleraußen", "kelleraussen", "unterirdisch", "gründung"]
+    sockel_kw = ["sockel", "plinth", "spritzwasser"]
 
     for w in m.by_type("IfcWall"):
         ps = el.get_psets(w)
-        wand_name = (w.Name or "").lower()
+        suchtext = _hole_suchtext_bauteil(w)
         g = el.get_container(w)
         geschoss_name = (g.Name or "").lower() if g else ""
 
         ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True or any(
-            k in wand_name for k in ["fassade", "aussen", "außen", "exterior", "sockel", "perimeter", "fundament"]
+            k in suchtext for k in ["fassade", "aussen", "außen", "exterior", "sockel", "perimeter", "fundament", "kelleraußen"]
         )
-        ist_im_erdreich = any(k in geschoss_name for k in erdreich_gesch_kw) or any(
-            k in wand_name for k in erdreich_wand_kw
+        ist_fundament_text = any(k in suchtext for k in fundament_kw) or any(
+            k in geschoss_name for k in ["foundation", "fundament", "gründung"]
         )
+        ist_sockel_text = any(k in suchtext for k in sockel_kw)
+        ist_im_kellergeschoss = any(k in geschoss_name for k in erdreich_gesch_kw)
 
-        if ist_im_erdreich and (ist_aussen or "fundament" in wand_name or "fundament" in geschoss_name):
+        if ist_fundament_text:
             fuege_bauteil_hinzu(w, "Fundament & Erdreich-Sockel")
-        elif "sockel" in wand_name:
+        elif ist_sockel_text:
+            # Oberirdischer Sockel hat Vorrang vor allgemeinen Kellergeschoss-Namen
             fuege_bauteil_hinzu(w, "Sockel (oberirdisch)")
+        elif ist_im_kellergeschoss and ist_aussen:
+            fuege_bauteil_hinzu(w, "Fundament & Erdreich-Sockel")
         elif ist_aussen:
-            fuege_bauteil_hinzu(w, "Außenwände & Fassade")
+            fuege_bauteil_hinzu(w, "Außenwände & Fassade", z_pruefung_erdreich=True)
         else:
             fuege_bauteil_hinzu(w, "Innenwände")
 
-    # 2. Streifen- & Einzelfundamente (IfcFooting) sowie Boden-/Fundamentplatten (IfcSlab != ROOF)
-    try:
-        for footing in m.by_type("IfcFooting"):
-            fuege_bauteil_hinzu(footing, "Fundament & Erdreich-Sockel")
-    except Exception:
-        pass
+    # 2. Streifen- & Einzelfundamente (IfcFooting, IfcBeam, IfcMember) sowie Bodenplatten (IfcSlab)
+    for klasse in ["IfcFooting", "IfcBeam", "IfcMember"]:
+        try:
+            for elem in m.by_type(klasse):
+                suchtext = _hole_suchtext_bauteil(elem)
+                g = el.get_container(elem)
+                geschoss_name = (g.Name or "").lower() if g else ""
+                if klasse == "IfcFooting" or any(
+                    k in f"{suchtext} {geschoss_name}" for k in ["fundament", "streifen", "gründung", "footing", "sohle"]
+                ):
+                    fuege_bauteil_hinzu(elem, "Fundament & Erdreich-Sockel")
+                elif "sockel" in suchtext:
+                    fuege_bauteil_hinzu(elem, "Sockel (oberirdisch)")
+        except Exception:
+            pass
 
     dach_liste = []
     for r in m.by_type("IfcRoof"):
@@ -241,7 +295,7 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 150000):
 
     for s in m.by_type("IfcSlab"):
         predef = (getattr(s, "PredefinedType", None) or "").upper()
-        slab_name = (s.Name or "").lower()
+        suchtext = _hole_suchtext_bauteil(s)
         g = el.get_container(s)
         geschoss_name = (g.Name or "").lower() if g else ""
 
@@ -250,7 +304,7 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 150000):
                 dach_liste.append(s)
         elif (
             predef == "BASESLAB"
-            or any(k in slab_name for k in ["bodenplatte", "fundament", "sohle", "gründung"])
+            or any(k in suchtext for k in ["bodenplatte", "fundament", "sohle", "gründung", "kellerboden"])
             or any(k in geschoss_name for k in erdreich_gesch_kw)
         ):
             fuege_bauteil_hinzu(s, "Fundament & Erdreich-Sockel")
@@ -269,17 +323,20 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 150000):
     for r in m.by_type("IfcRailing"):
         fuege_bauteil_hinzu(r, "Geländer")
 
-    # 6. Regenrinnen & Fallrohre
+    # 6. Regenrinnen, Fallrohre & Proxy-Fundamente/-Sockel
     for klasse in ["IfcFlowSegment", "IfcBuildingElementProxy"]:
         try:
             for p in m.by_type(klasse):
                 predef = (getattr(p, "PredefinedType", None) or "").upper()
-                typ_obj = el.get_type(p)
-                suchtext = f"{p.Name or ''} {typ_obj.Name if typ_obj else ''} {predef}".lower()
+                suchtext = f"{_hole_suchtext_bauteil(p)} {predef}".lower()
                 if predef in {"GUTTER", "DOWNPIPE"} or any(
                     k in suchtext for k in ["rinne", "dachrinne", "gutter", "fallrohr", "regenrohr", "downpipe"]
                 ):
                     fuege_bauteil_hinzu(p, "Regenrinnen & Fallrohre")
+                elif any(k in suchtext for k in ["fundament", "streifen", "gründung", "footing"]):
+                    fuege_bauteil_hinzu(p, "Fundament & Erdreich-Sockel")
+                elif "sockel" in suchtext:
+                    fuege_bauteil_hinzu(p, "Sockel (oberirdisch)")
         except Exception:
             pass
 
@@ -327,8 +384,9 @@ def auswerten(daten: bytes, rechnen: bool):
                 herkunft = "berechnet" if fl is not None else "fehlt"
 
         wand_name = w.Name or ""
+        suchtext_wand = _hole_suchtext_bauteil(w)
         ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True
-        if not ist_aussen and any(k in wand_name.lower() for k in ["fassade", "aussen", "außen", "exterior", "sockel", "perimeter"]):
+        if not ist_aussen and any(k in suchtext_wand for k in ["fassade", "aussen", "außen", "exterior", "sockel", "perimeter", "fundament"]):
             ist_aussen = True
 
         g = el.get_container(w)
