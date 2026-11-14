@@ -1,4 +1,3 @@
-import base64
 import io
 import re
 import tempfile
@@ -33,19 +32,10 @@ st.markdown(f"""<style>
 .info-box{{background:#FAF7F2;border:1px solid #E5DCCB;border-top:4px solid {HAUPT_BEIGE};padding:18px 20px;border-radius:8px;height:100%;box-shadow:0 2px 4px rgba(62,50,40,0.05)}}
 .info-box h4{{color:{TEXT_BRAUN};margin-top:0;margin-bottom:8px;font-size:1.1rem}}
 .info-box p{{color:#5C4D40;font-size:0.95rem;line-height:1.5;margin:0}}
-.ueber-mich{{background:{HELL_CREME};border-left:6px solid {HAUPT_BEIGE};padding:22px 26px;border-radius:8px;margin-top:20px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}}
-.ueber-mich img{{width:135px;height:135px;object-fit:cover;object-position:center top;border-radius:50%;border:4px solid {AKZENT_SAND};flex-shrink:0}}
 .ueber-mich-platzhalter{{width:135px;height:135px;border-radius:50%;border:4px solid {AKZENT_SAND};background:{HAUPT_BEIGE};color:#fff;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:bold;flex-shrink:0}}
-.ueber-mich-text{{flex:1;min-width:260px}}
-.ueber-mich h3{{margin-top:0;color:{TEXT_BRAUN}}}
-.ueber-mich p{{color:#4A3D32;font-size:0.96rem;line-height:1.6;margin-bottom:8px}}
 [data-testid="stTable"] th{{background:{HAUPT_BEIGE}!important;color:#fff!important}}
 h3{{color:{TEXT_BRAUN}}}
 </style>""", unsafe_allow_html=True)
-
-logo = Path(__file__).with_name("logo.png")
-if logo.exists():
-    st.image(str(logo), width=180)
 
 st.markdown(
     '<div class="kopf">'
@@ -57,42 +47,8 @@ st.markdown(
 
 
 # ==============================================================================
-# 2. HILFSFUNKTIONEN (BILDER & 3D-GEOMETRIE-FALLBACKS)
+# 2. HILFSFUNKTIONEN (3D-GEOMETRIE-FALLBACKS)
 # ==============================================================================
-def lade_profilbild_html() -> str:
-    """
-    Sucht unabhängig von Groß-/Kleinschreibung nach einer Profilbild-Datei
-    im Projektordner (z. B. profil.jpg, profil.JPG, profil.png) und bettet sie
-    als Base64-Bild ein. Zeigt 'KW' im Kreis, falls kein gültiges Bild vorliegt.
-    """
-    basis_ordner = Path(__file__).resolve().parent
-    erlaubte_endungen = {".jpg", ".jpeg", ".png", ".webp"}
-
-    for datei in sorted(basis_ordner.iterdir()):
-        if (
-            datei.is_file()
-            and "profil" in datei.stem.lower()
-            and datei.suffix.lower() in erlaubte_endungen
-            and datei.stat().st_size > 0
-        ):
-            rohe_daten = datei.read_bytes()
-            # Prüfen, ob es wirklich echte Bilddaten sind (JPEG startet mit FF D8, PNG mit 89 50)
-            if rohe_daten.startswith(b"\xff\xd8"):
-                mime = "image/jpeg"
-            elif rohe_daten.startswith(b"\x89PNG"):
-                mime = "image/png"
-            elif rohe_daten.startswith(b"RIFF") and b"WEBP" in rohe_daten[:16]:
-                mime = "image/webp"
-            else:
-                # Datei ist z. B. eine umbenannte HEIC- oder HTML-Datei -> Fallback nutzen
-                continue
-
-            b64 = base64.b64encode(rohe_daten).decode("ascii")
-            return f'<img src="data:{mime};base64,{b64}" alt="Kathrin Wozniak" />'
-
-    return '<div class="ueber-mich-platzhalter">KW</div>'
-
-
 def berechne_wand(wand, settings, skala: float):
     """Berechnet die fehlende Seitenfläche einer Wand über Volumen / Wanddicke."""
     d = None
@@ -507,23 +463,42 @@ if not datei:
         "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser und laden Sie unten den fertigen **Excel-Bericht** herunter."
     )
 
-    profil_html = lade_profilbild_html()
-    st.markdown(
-        f'<div class="ueber-mich">'
-        f'{profil_html}'
-        f'<div class="ueber-mich-text">'
-        f'<h3>Über mich & das Projekt</h3>'
-        f'<p><strong>Entwickelt von Kathrin Wozniak</strong> – Architektin mit Fokus auf Bestandsmodernisierung und OpenBIM im Wohnungsbau.</p>'
-        f'<p>In der täglichen Planungspraxis liegen Bestandsgebäude heute oft als IFC-Modelle vor, '
-        f'doch für schnelle Wirtschaftlichkeits- und Sanierungsbetrachtungen fehlen häufig passgenaue, '
-        f'unkomplizierte Auswertungswerkzeuge ohne komplexe Spezialsoftware. '
-        f'Aus diesem Bedarf heraus – und im Rahmen meiner Weiterbildung im Bereich <strong>BIM (Building Information Modeling)</strong> – '
-        f'ist <em>bauteilauswertung-ifc</em> entstanden: ein praxisnahes Werkzeug aus der Architektur für die Architektur, '
-        f'das offene Gebäudedaten direkt im Browser nutzbar macht.</p>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True
+    # --- Bereich "Über mich & das Projekt" mit st.image() (funktioniert bei jeder Dateigröße) ---
+    st.markdown("---")
+    basis_ordner = Path(__file__).resolve().parent
+    profil_pfad = next(
+        (p for p in basis_ordner.iterdir() if p.is_file() and "profil" in p.stem.lower() and p.suffix.lower() in {".jpg", ".jpeg", ".png"}),
+        None
     )
+
+    st.markdown(f"""<style>
+    [data-testid="stImage"] img {{
+        border-radius: 50%;
+        border: 4px solid {AKZENT_SAND};
+        object-fit: cover;
+        object-position: center top;
+        aspect-ratio: 1 / 1;
+    }}
+    </style>""", unsafe_allow_html=True)
+
+    with st.container(border=True):
+        col_bild, col_text = st.columns([1, 4], vertical_alignment="center")
+        with col_bild:
+            if profil_pfad:
+                st.image(str(profil_pfad), width=140)
+            else:
+                st.markdown('<div class="ueber-mich-platzhalter">KW</div>', unsafe_allow_html=True)
+        with col_text:
+            st.markdown("### Über mich & das Projekt")
+            st.markdown(
+                "**Entwickelt von Kathrin Wozniak** – Architektin mit Fokus auf Bestandsmodernisierung und OpenBIM im Wohnungsbau.\n\n"
+                "In der täglichen Planungspraxis liegen Bestandsgebäude heute oft als IFC-Modelle vor, "
+                "doch für schnelle Wirtschaftlichkeits- und Sanierungsbetrachtungen fehlen häufig passgenaue, "
+                "unkomplizierte Auswertungswerkzeuge ohne komplexe Spezialsoftware. "
+                "Aus diesem Bedarf heraus – und im Rahmen meiner Weiterbildung im Bereich **BIM (Building Information Modeling)** – "
+                "ist *bauteilauswertung-ifc* entstanden: ein praxisnahes Werkzeug aus der Architektur für die Architektur, "
+                "das offene Gebäudedaten direkt im Browser nutzbar macht."
+            )
     st.stop()
 
 
