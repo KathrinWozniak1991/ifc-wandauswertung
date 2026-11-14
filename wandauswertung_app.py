@@ -24,15 +24,17 @@ HELL_CREME  = "#F5EFE6"   # Helles Creme-Beige für Karten & Hintergrundboxen
 TEXT_BRAUN  = "#3E3228"   # Dunkles Espresso-Braun für hohen Kontrast
 
 # Typische OpenBIM- / Solibri-Farben für die 3D-Gebäudevorschau
+# Unterteilt in oberirdischen Sockel und unterirdischen Sockel / Fundament (im Erdreich)
 BIM_FARBEN = {
-    "Außenwände & Fassade":      {"farbe": "#D9A760", "deckkraft": 1.00, "standard_an": True},
-    "Sockel & Fundament":        {"farbe": "#6E737B", "deckkraft": 1.00, "standard_an": True},
-    "Innenwände":                {"farbe": "#C8CCD1", "deckkraft": 0.85, "standard_an": False},
-    "Dachflächen":               {"farbe": "#B84A39", "deckkraft": 1.00, "standard_an": True},
-    "Fenster":                   {"farbe": "#5DADE2", "deckkraft": 0.45, "standard_an": True},
-    "Türen":                     {"farbe": "#8B5A2B", "deckkraft": 1.00, "standard_an": True},
-    "Geländer":                  {"farbe": "#34495E", "deckkraft": 1.00, "standard_an": True},
-    "Regenrinnen & Fallrohre":   {"farbe": "#2E86C1", "deckkraft": 1.00, "standard_an": True},
+    "Außenwände & Fassade":         {"farbe": "#D9A760", "deckkraft": 1.00, "standard_an": True},
+    "Sockel (oberirdisch)":         {"farbe": "#7F868F", "deckkraft": 1.00, "standard_an": True},
+    "Fundament & Erdreich-Sockel":  {"farbe": "#4A4E54", "deckkraft": 1.00, "standard_an": True},
+    "Innenwände":                   {"farbe": "#C8CCD1", "deckkraft": 0.85, "standard_an": False},
+    "Dachflächen":                  {"farbe": "#B84A39", "deckkraft": 1.00, "standard_an": True},
+    "Fenster":                      {"farbe": "#5DADE2", "deckkraft": 0.45, "standard_an": True},
+    "Türen":                        {"farbe": "#8B5A2B", "deckkraft": 1.00, "standard_an": True},
+    "Geländer":                     {"farbe": "#34495E", "deckkraft": 1.00, "standard_an": True},
+    "Regenrinnen & Fallrohre":      {"farbe": "#2E86C1", "deckkraft": 1.00, "standard_an": True},
 }
 
 st.set_page_config(page_title="bauteilauswertung-ifc", layout="wide")
@@ -152,10 +154,11 @@ def hole_laenge_aus_psets(ps: dict, skala: float):
 
 
 @st.cache_data(show_spinner="3D-Gebäudegeometrie wird für die Vorschau aufbereitet …")
-def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 120000):
+def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 150000):
     """
     Erzeugt pro BIM-Bauteilgruppe ein kombiniertes Dreiecksnetz (Vertices + Faces)
-    in Weltkoordinaten für die interaktive Plotly-3D-Vorschau.
+    in Weltkoordinaten für die interaktive Plotly-3D-Vorschau – inklusive
+    unterirdischem Sockel, Kelleraußenwänden, Fundamenten (IfcFooting) und Bodenplatten (IfcSlab).
     """
     with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
         f.write(daten)
@@ -166,7 +169,6 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 120000):
     finally:
         tmp_pfad.unlink(missing_ok=True)
 
-    # USE_WORLD_COORDS platziert alle Bauteile exakt an ihrer echten Position im Gebäude
     settings = ifcopenshell.geom.settings()
     settings.set(settings.USE_WORLD_COORDS, True)
 
@@ -199,44 +201,75 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 120000):
         except Exception:
             pass
 
-    # 1. Wände (unterteilt in Sockel/Fundament, Außenwand/Fassade und Innenwand)
+    # 1. Wände (IfcWall): Unterscheidung in oberirdischen Sockel, Erdreich-Sockel/Fundament, Fassade & Innenwand
+    erdreich_gesch_kw = ["foundation", "fundament", "keller", "ug", "untergeschoss", "basement", "erdreich"]
+    erdreich_wand_kw = ["fundament", "perimeter", "erdreich", "kelleraußen", "kelleraussen", "unterirdisch"]
+
     for w in m.by_type("IfcWall"):
         ps = el.get_psets(w)
         wand_name = (w.Name or "").lower()
         g = el.get_container(w)
         geschoss_name = (g.Name or "").lower() if g else ""
+
         ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True or any(
-            k in wand_name for k in ["fassade", "aussen", "außen", "exterior", "sockel"]
+            k in wand_name for k in ["fassade", "aussen", "außen", "exterior", "sockel", "perimeter", "fundament"]
         )
-        if any(k in geschoss_name for k in ["foundation", "fundament"]) or "sockel" in wand_name:
-            fuege_bauteil_hinzu(w, "Sockel & Fundament")
+        ist_im_erdreich = any(k in geschoss_name for k in erdreich_gesch_kw) or any(
+            k in wand_name for k in erdreich_wand_kw
+        )
+
+        if ist_im_erdreich and (ist_aussen or "fundament" in wand_name or "fundament" in geschoss_name):
+            fuege_bauteil_hinzu(w, "Fundament & Erdreich-Sockel")
+        elif "sockel" in wand_name:
+            fuege_bauteil_hinzu(w, "Sockel (oberirdisch)")
         elif ist_aussen:
             fuege_bauteil_hinzu(w, "Außenwände & Fassade")
         else:
             fuege_bauteil_hinzu(w, "Innenwände")
 
-    # 2. Dachflächen
+    # 2. Streifen- & Einzelfundamente (IfcFooting) sowie Boden-/Fundamentplatten (IfcSlab != ROOF)
+    try:
+        for footing in m.by_type("IfcFooting"):
+            fuege_bauteil_hinzu(footing, "Fundament & Erdreich-Sockel")
+    except Exception:
+        pass
+
     dach_liste = []
     for r in m.by_type("IfcRoof"):
         teile = el.get_parts(r)
         dach_liste.extend(teile if teile else [r])
+
     for s in m.by_type("IfcSlab"):
-        if getattr(s, "PredefinedType", None) == "ROOF" and s not in dach_liste:
-            dach_liste.append(s)
+        predef = (getattr(s, "PredefinedType", None) or "").upper()
+        slab_name = (s.Name or "").lower()
+        g = el.get_container(s)
+        geschoss_name = (g.Name or "").lower() if g else ""
+
+        if predef == "ROOF" or s in dach_liste:
+            if s not in dach_liste:
+                dach_liste.append(s)
+        elif (
+            predef == "BASESLAB"
+            or any(k in slab_name for k in ["bodenplatte", "fundament", "sohle", "gründung"])
+            or any(k in geschoss_name for k in erdreich_gesch_kw)
+        ):
+            fuege_bauteil_hinzu(s, "Fundament & Erdreich-Sockel")
+
+    # 3. Dachflächen
     for d in dach_liste:
         fuege_bauteil_hinzu(d, "Dachflächen")
 
-    # 3. Fenster & Türen
+    # 4. Fenster & Türen
     for f in m.by_type("IfcWindow"):
         fuege_bauteil_hinzu(f, "Fenster")
     for t in m.by_type("IfcDoor"):
         fuege_bauteil_hinzu(t, "Türen")
 
-    # 4. Geländer
+    # 5. Geländer
     for r in m.by_type("IfcRailing"):
         fuege_bauteil_hinzu(r, "Geländer")
 
-    # 5. Regenrinnen & Fallrohre
+    # 6. Regenrinnen & Fallrohre
     for klasse in ["IfcFlowSegment", "IfcBuildingElementProxy"]:
         try:
             for p in m.by_type(klasse):
@@ -295,7 +328,7 @@ def auswerten(daten: bytes, rechnen: bool):
 
         wand_name = w.Name or ""
         ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True
-        if not ist_aussen and any(k in wand_name.lower() for k in ["fassade", "aussen", "außen", "exterior", "sockel"]):
+        if not ist_aussen and any(k in wand_name.lower() for k in ["fassade", "aussen", "außen", "exterior", "sockel", "perimeter"]):
             ist_aussen = True
 
         g = el.get_container(w)
@@ -589,7 +622,7 @@ if not datei:
         "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser und laden Sie unten den fertigen **Excel-Bericht** herunter."
     )
 
-    # --- Bereich "Über mich & das Projekt" (gestochen scharf durch hohe Render-Auflösung) ---
+    # --- Bereich "Über mich & das Projekt" ---
     st.markdown("---")
     basis_ordner = Path(__file__).resolve().parent
     profil_pfad = next(
@@ -762,16 +795,16 @@ with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=Tr
     else:
         st.caption(
             "Steuerung: Linke Maustaste = Drehen | Rechte Maustaste = Verschieben | Mausrad = Zoomen. "
-            "Über die Auswahlfelder lassen sich einzelne Bauteilgruppen gezielt ein- oder ausblenden:"
+            "Über die Auswahlfelder lassen sich oberirdische Bauteile und der unterirdische Sockel/Fundamentbereich ein- oder ausblenden:"
         )
 
-        # Checkboxen zum Ein-/Ausblenden der einzelnen Bauteilgruppen in 4 Spalten
+        # Checkboxen zum Ein-/Ausblenden der einzelnen Bauteilgruppen in 3 Spalten
         gruppen_namen = list(BIM_FARBEN.keys())
         aktive_gruppen = {}
-        cb_spalten = st.columns(4)
+        cb_spalten = st.columns(3)
         for idx, gruppe in enumerate(gruppen_namen):
             anzahl_bt = meshes_3d[gruppe]["bauteile"] if gruppe in meshes_3d else 0
-            with cb_spalten[idx % 4]:
+            with cb_spalten[idx % 3]:
                 aktive_gruppen[gruppe] = st.checkbox(
                     f"{gruppe} ({anzahl_bt})",
                     value=BIM_FARBEN[gruppe]["standard_an"] and (anzahl_bt > 0),
@@ -805,7 +838,7 @@ with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=Tr
             ))
 
         fig_3d.update_layout(
-            height=580,
+            height=600,
             margin=dict(l=0, r=0, t=10, b=0),
             paper_bgcolor="#FAF7F2",
             legend=dict(
@@ -817,11 +850,11 @@ with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=Tr
                 bgcolor="rgba(255,255,255,0.85)"
             ),
             scene=dict(
-                aspectmode="data",  # Unverzerrte 1:1:1-Proportionen des Gebäudes
+                aspectmode="data",
                 xaxis=dict(title="X (m)", backgroundcolor="#F5EFE6", gridcolor="#DDD3C5", showbackground=True),
                 yaxis=dict(title="Y (m)", backgroundcolor="#F5EFE6", gridcolor="#DDD3C5", showbackground=True),
                 zaxis=dict(title="Höhe Z (m)", backgroundcolor="#EDE4D7", gridcolor="#DDD3C5", showbackground=True),
-                camera=dict(eye=dict(x=1.45, y=-1.45, z=0.95)),
+                camera=dict(eye=dict(x=1.45, y=-1.45, z=0.85)),
             ),
         )
 
