@@ -16,6 +16,7 @@ from openpyxl.styles import Font, PatternFill
 # ==============================================================================
 # 1. DESIGN-KONFIGURATION & SEITENLAYOUT
 # ==============================================================================
+# Harmonische Beige- und Sandtöne (Taupe, Warmes Beige, Creme, Dunkelbraun)
 HAUPT_BEIGE = "#8C735B"   # Warmes Taupe-Braun für Kopfzeile & Tabellenköpfe
 AKZENT_SAND = "#C8B299"   # Sandbeige für Rahmen & Akzentlinien
 HELL_CREME  = "#F5EFE6"   # Helles Creme-Beige für Karten & Hintergrundboxen
@@ -53,6 +54,7 @@ def berechne_wand(wand, settings, skala: float):
     """Berechnet die fehlende Seitenfläche einer Wand über Volumen / Wanddicke."""
     d = None
     try:
+        # 1. Versuch: Gesamtdicke aus den Materialschichten (IfcMaterialLayerSet) auslesen
         sch = el.get_material(wand, should_skip_usage=True)
         if sch is not None and sch.is_a("IfcMaterialLayerSet"):
             d = sum(s.LayerThickness for s in sch.MaterialLayers) * skala
@@ -60,6 +62,7 @@ def berechne_wand(wand, settings, skala: float):
         pass
 
     if not d:
+        # 2. Versuch: Dicke aus dem Wandnamen extrahieren (z. B. "Wall-420" -> 0,42 m)
         t = re.search(r"Wall-(\d+)", wand.Name or "")
         d = int(t.group(1)) / 1000 if t else None
 
@@ -67,6 +70,7 @@ def berechne_wand(wand, settings, skala: float):
         return None
 
     try:
+        # Seitenfläche = Volumen (in m³) / Wanddicke (in m)
         volumen = shp.get_volume(ifcopenshell.geom.create_shape(settings, wand).geometry)
         return volumen / d
     except Exception:
@@ -89,6 +93,7 @@ def berechne_dach_geometrie(bauteil, settings):
             if norm_len == 0:
                 continue
             normal = kreuz / norm_len
+            # Nur Dreiecke berücksichtigen, deren Normale nach oben zeigt (Z > 0.1)
             if normal[2] > 0.1:
                 tri_flaeche = 0.5 * norm_len
                 flaeche_oben += tri_flaeche
@@ -105,7 +110,10 @@ def berechne_dach_geometrie(bauteil, settings):
 
 
 def berechne_laenge_3d(bauteil, settings, modus: str = "horizontal"):
-    """Schätzt die Bauteillänge aus der 3D-Ausdehnung (Bounding Box) in Metern."""
+    """
+    Fallback für Geländer, Regenrinnen und Fallrohre:
+    Schätzt die Bauteillänge aus der 3D-Ausdehnung (Bounding Box) in Metern.
+    """
     try:
         geom = ifcopenshell.geom.create_shape(settings, bauteil).geometry
         verts = np.array(geom.verts).reshape(-1, 3)
@@ -169,6 +177,7 @@ def auswerten(daten: bytes, rechnen: bool):
 
         wand_name = w.Name or ""
         ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True
+        # Fallback für Revit-Exporte ohne IsExternal: Typische Außenwand-Begriffe prüfen
         if not ist_aussen and any(k in wand_name.lower() for k in ["fassade", "aussen", "außen", "exterior", "sockel"]):
             ist_aussen = True
 
@@ -232,6 +241,7 @@ def auswerten(daten: bytes, rechnen: bool):
         typ_obj = el.get_type(t)
         typ_name = typ_obj.Name if typ_obj and typ_obj.Name else ""
 
+        # Außenlage prüfen (direktes Property + Fallback über Mutterwand)
         ist_aussen = ps.get("Pset_DoorCommon", {}).get("IsExternal") is True
         wand_name = ""
         try:
@@ -463,7 +473,7 @@ if not datei:
         "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser und laden Sie unten den fertigen **Excel-Bericht** herunter."
     )
 
-    # --- Bereich "Über mich & das Projekt" mit st.image() (funktioniert bei jeder Dateigröße) ---
+    # --- Bereich "Über mich & das Projekt" (absturzsicher mit try/except & KW-Fallback) ---
     st.markdown("---")
     basis_ordner = Path(__file__).resolve().parent
     profil_pfad = next(
@@ -484,9 +494,14 @@ if not datei:
     with st.container(border=True):
         col_bild, col_text = st.columns([1, 4], vertical_alignment="center")
         with col_bild:
+            bild_angezeigt = False
             if profil_pfad:
-                st.image(str(profil_pfad), width=140)
-            else:
+                try:
+                    st.image(str(profil_pfad), width=140)
+                    bild_angezeigt = True
+                except Exception:
+                    bild_angezeigt = False
+            if not bild_angezeigt:
                 st.markdown('<div class="ueber-mich-platzhalter">KW</div>', unsafe_allow_html=True)
         with col_text:
             st.markdown("### Über mich & das Projekt")
@@ -552,11 +567,13 @@ def kategorie_tuer(r):
     ist_we = any(k.strip().lower() in name_typ_low for k in we_kw.split(",") if k.strip())
     ist_he = any(k.strip().lower() in name_typ_low for k in he_kw.split(",") if k.strip())
 
+    # 1. Außentüren unterscheiden (Kelleraußentür vs. Hauseingangstür)
     if r.ist_aussen or ist_he:
         if ist_keller and not ist_he:
             return "Kelleraußentür"
         return "Hauseingangstür"
 
+    # 2. Innentüren nach Funktion & Geschoss unterscheiden
     if ist_we:
         return "Wohnungseingangstür"
     if ist_keller:
@@ -589,6 +606,7 @@ fallrohre_gesamt = (
     if not df_entwaesserung.empty else 0.0
 )
 
+# Kennzahlen-Karten in 2 Reihen à 3 Spalten
 k1, k2, k3 = st.columns(3)
 k1.markdown(f'<div class="karte"><span>Fassadendämmung (netto)</span><b>{fassade.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
 k2.markdown(f'<div class="karte"><span>Sockeldämmung (netto)</span><b>{sockel.Fläche.sum():,.1f} m²</b></div>', unsafe_allow_html=True)
