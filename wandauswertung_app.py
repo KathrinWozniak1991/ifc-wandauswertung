@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 import ifcopenshell
 import ifcopenshell.geom
@@ -16,11 +17,23 @@ from openpyxl.styles import Font, PatternFill
 # ==============================================================================
 # 1. DESIGN-KONFIGURATION & SEITENLAYOUT
 # ==============================================================================
-# Harmonische Beige- und Sandtöne (Taupe, Warmes Beige, Creme, Dunkelbraun)
+# Harmonische Beige- und Sandtöne für die Benutzeroberfläche
 HAUPT_BEIGE = "#8C735B"   # Warmes Taupe-Braun für Kopfzeile & Tabellenköpfe
 AKZENT_SAND = "#C8B299"   # Sandbeige für Rahmen & Akzentlinien
 HELL_CREME  = "#F5EFE6"   # Helles Creme-Beige für Karten & Hintergrundboxen
 TEXT_BRAUN  = "#3E3228"   # Dunkles Espresso-Braun für hohen Kontrast
+
+# Typische OpenBIM- / Solibri-Farben für die 3D-Gebäudevorschau
+BIM_FARBEN = {
+    "Außenwände & Fassade":      {"farbe": "#D9A760", "deckkraft": 1.00, "standard_an": True},
+    "Sockel & Fundament":        {"farbe": "#6E737B", "deckkraft": 1.00, "standard_an": True},
+    "Innenwände":                {"farbe": "#C8CCD1", "deckkraft": 0.85, "standard_an": False},
+    "Dachflächen":               {"farbe": "#B84A39", "deckkraft": 1.00, "standard_an": True},
+    "Fenster":                   {"farbe": "#5DADE2", "deckkraft": 0.45, "standard_an": True},
+    "Türen":                     {"farbe": "#8B5A2B", "deckkraft": 1.00, "standard_an": True},
+    "Geländer":                  {"farbe": "#34495E", "deckkraft": 1.00, "standard_an": True},
+    "Regenrinnen & Fallrohre":   {"farbe": "#2E86C1", "deckkraft": 1.00, "standard_an": True},
+}
 
 st.set_page_config(page_title="bauteilauswertung-ifc", layout="wide")
 
@@ -48,13 +61,12 @@ st.markdown(
 
 
 # ==============================================================================
-# 2. HILFSFUNKTIONEN (3D-GEOMETRIE-FALLBACKS)
+# 2. HILFSFUNKTIONEN (3D-GEOMETRIE-FALLBACKS & 3D-MESH-EXTRAKTION)
 # ==============================================================================
 def berechne_wand(wand, settings, skala: float):
     """Berechnet die fehlende Seitenfläche einer Wand über Volumen / Wanddicke."""
     d = None
     try:
-        # 1. Versuch: Gesamtdicke aus den Materialschichten (IfcMaterialLayerSet) auslesen
         sch = el.get_material(wand, should_skip_usage=True)
         if sch is not None and sch.is_a("IfcMaterialLayerSet"):
             d = sum(s.LayerThickness for s in sch.MaterialLayers) * skala
@@ -62,7 +74,6 @@ def berechne_wand(wand, settings, skala: float):
         pass
 
     if not d:
-        # 2. Versuch: Dicke aus dem Wandnamen extrahieren (z. B. "Wall-420" -> 0,42 m)
         t = re.search(r"Wall-(\d+)", wand.Name or "")
         d = int(t.group(1)) / 1000 if t else None
 
@@ -70,7 +81,6 @@ def berechne_wand(wand, settings, skala: float):
         return None
 
     try:
-        # Seitenfläche = Volumen (in m³) / Wanddicke (in m)
         volumen = shp.get_volume(ifcopenshell.geom.create_shape(settings, wand).geometry)
         return volumen / d
     except Exception:
@@ -93,7 +103,6 @@ def berechne_dach_geometrie(bauteil, settings):
             if norm_len == 0:
                 continue
             normal = kreuz / norm_len
-            # Nur Dreiecke berücksichtigen, deren Normale nach oben zeigt (Z > 0.1)
             if normal[2] > 0.1:
                 tri_flaeche = 0.5 * norm_len
                 flaeche_oben += tri_flaeche
@@ -110,10 +119,7 @@ def berechne_dach_geometrie(bauteil, settings):
 
 
 def berechne_laenge_3d(bauteil, settings, modus: str = "horizontal"):
-    """
-    Fallback für Geländer, Regenrinnen und Fallrohre:
-    Schätzt die Bauteillänge aus der 3D-Ausdehnung (Bounding Box) in Metern.
-    """
+    """Schätzt die Bauteillänge aus der 3D-Ausdehnung (Bounding Box) in Metern."""
     try:
         geom = ifcopenshell.geom.create_shape(settings, bauteil).geometry
         verts = np.array(geom.verts).reshape(-1, 3)
@@ -143,6 +149,118 @@ def hole_laenge_aus_psets(ps: dict, skala: float):
             if isinstance(val, (int, float)) and val > 0:
                 return val * skala if val > 100 else float(val)
     return None
+
+
+@st.cache_data(show_spinner="3D-Gebäudegeometrie wird für die Vorschau aufbereitet …")
+def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 120000):
+    """
+    Erzeugt pro BIM-Bauteilgruppe ein kombiniertes Dreiecksnetz (Vertices + Faces)
+    in Weltkoordinaten für die interaktive Plotly-3D-Vorschau.
+    """
+    with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
+        f.write(daten)
+        tmp_pfad = Path(f.name)
+
+    try:
+        m = ifcopenshell.open(str(tmp_pfad))
+    finally:
+        tmp_pfad.unlink(missing_ok=True)
+
+    # USE_WORLD_COORDS platziert alle Bauteile exakt an ihrer echten Position im Gebäude
+    settings = ifcopenshell.geom.settings()
+    settings.set(settings.USE_WORLD_COORDS, True)
+
+    gruppen_puffer = {
+        k: {"verts": [], "faces": [], "offset": 0, "bauteile": 0}
+        for k in BIM_FARBEN
+    }
+    dreiecke_gesamt = 0
+    gekurzt = False
+
+    def fuege_bauteil_hinzu(bauteil, gruppe_name: str):
+        nonlocal dreiecke_gesamt, gekurzt
+        if dreiecke_gesamt >= max_dreiecke_gesamt:
+            gekurzt = True
+            return
+        try:
+            shape = ifcopenshell.geom.create_shape(settings, bauteil)
+            geom = shape.geometry
+            verts = np.array(geom.verts, dtype=np.float32).reshape(-1, 3)
+            faces = np.array(geom.faces, dtype=np.int32).reshape(-1, 3)
+            if len(verts) == 0 or len(faces) == 0:
+                return
+
+            puffer = gruppen_puffer[gruppe_name]
+            puffer["verts"].append(verts)
+            puffer["faces"].append(faces + puffer["offset"])
+            puffer["offset"] += len(verts)
+            puffer["bauteile"] += 1
+            dreiecke_gesamt += len(faces)
+        except Exception:
+            pass
+
+    # 1. Wände (unterteilt in Sockel/Fundament, Außenwand/Fassade und Innenwand)
+    for w in m.by_type("IfcWall"):
+        ps = el.get_psets(w)
+        wand_name = (w.Name or "").lower()
+        g = el.get_container(w)
+        geschoss_name = (g.Name or "").lower() if g else ""
+        ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True or any(
+            k in wand_name for k in ["fassade", "aussen", "außen", "exterior", "sockel"]
+        )
+        if any(k in geschoss_name for k in ["foundation", "fundament"]) or "sockel" in wand_name:
+            fuege_bauteil_hinzu(w, "Sockel & Fundament")
+        elif ist_aussen:
+            fuege_bauteil_hinzu(w, "Außenwände & Fassade")
+        else:
+            fuege_bauteil_hinzu(w, "Innenwände")
+
+    # 2. Dachflächen
+    dach_liste = []
+    for r in m.by_type("IfcRoof"):
+        teile = el.get_parts(r)
+        dach_liste.extend(teile if teile else [r])
+    for s in m.by_type("IfcSlab"):
+        if getattr(s, "PredefinedType", None) == "ROOF" and s not in dach_liste:
+            dach_liste.append(s)
+    for d in dach_liste:
+        fuege_bauteil_hinzu(d, "Dachflächen")
+
+    # 3. Fenster & Türen
+    for f in m.by_type("IfcWindow"):
+        fuege_bauteil_hinzu(f, "Fenster")
+    for t in m.by_type("IfcDoor"):
+        fuege_bauteil_hinzu(t, "Türen")
+
+    # 4. Geländer
+    for r in m.by_type("IfcRailing"):
+        fuege_bauteil_hinzu(r, "Geländer")
+
+    # 5. Regenrinnen & Fallrohre
+    for klasse in ["IfcFlowSegment", "IfcBuildingElementProxy"]:
+        try:
+            for p in m.by_type(klasse):
+                predef = (getattr(p, "PredefinedType", None) or "").upper()
+                typ_obj = el.get_type(p)
+                suchtext = f"{p.Name or ''} {typ_obj.Name if typ_obj else ''} {predef}".lower()
+                if predef in {"GUTTER", "DOWNPIPE"} or any(
+                    k in suchtext for k in ["rinne", "dachrinne", "gutter", "fallrohr", "regenrohr", "downpipe"]
+                ):
+                    fuege_bauteil_hinzu(p, "Regenrinnen & Fallrohre")
+        except Exception:
+            pass
+
+    # Puffer in kompakte NumPy-Arrays zusammenführen
+    ergebnis_meshes = {}
+    for gruppe_name, puffer in gruppen_puffer.items():
+        if puffer["verts"]:
+            ergebnis_meshes[gruppe_name] = {
+                "verts": np.vstack(puffer["verts"]),
+                "faces": np.vstack(puffer["faces"]),
+                "bauteile": puffer["bauteile"],
+            }
+
+    return ergebnis_meshes, dreiecke_gesamt, gekurzt
 
 
 # ==============================================================================
@@ -177,7 +295,6 @@ def auswerten(daten: bytes, rechnen: bool):
 
         wand_name = w.Name or ""
         ist_aussen = ps.get("Pset_WallCommon", {}).get("IsExternal") is True
-        # Fallback für Revit-Exporte ohne IsExternal: Typische Außenwand-Begriffe prüfen
         if not ist_aussen and any(k in wand_name.lower() for k in ["fassade", "aussen", "außen", "exterior", "sockel"]):
             ist_aussen = True
 
@@ -241,7 +358,6 @@ def auswerten(daten: bytes, rechnen: bool):
         typ_obj = el.get_type(t)
         typ_name = typ_obj.Name if typ_obj and typ_obj.Name else ""
 
-        # Außenlage prüfen (direktes Property + Fallback über Mutterwand)
         ist_aussen = ps.get("Pset_DoorCommon", {}).get("IsExternal") is True
         wand_name = ""
         try:
@@ -481,7 +597,6 @@ if not datei:
         None
     )
 
-    # CSS: Bild wird mit 450px scharf geladen, aber im Browser exakt als 145x145px Kreis dargestellt
     st.markdown(f"""<style>
     [data-testid="stImage"] {{
         display: flex;
@@ -505,7 +620,6 @@ if not datei:
             bild_angezeigt = False
             if profil_pfad:
                 try:
-                    # width=450 sorgt für 3-fache Pixeldichte (Retina-scharf statt 140px-Pixelbrei)
                     st.image(str(profil_pfad), width=450)
                     bild_angezeigt = True
                 except Exception:
@@ -529,7 +643,8 @@ if not datei:
 # ==============================================================================
 # 5. FILTER, KATEGORISIERUNG & KENNZAHLEN
 # ==============================================================================
-df_waende, df_fenster, df_tueren, df_daecher, df_gelaender, df_entwaesserung = auswerten(datei.getvalue(), rechnen)
+ifc_bytes = datei.getvalue()
+df_waende, df_fenster, df_tueren, df_daecher, df_gelaender, df_entwaesserung = auswerten(ifc_bytes, rechnen)
 geschosse_waende = sorted(df_waende["Geschoss"].unique()) if not df_waende.empty else []
 
 with st.sidebar:
@@ -576,13 +691,11 @@ def kategorie_tuer(r):
     ist_we = any(k.strip().lower() in name_typ_low for k in we_kw.split(",") if k.strip())
     ist_he = any(k.strip().lower() in name_typ_low for k in he_kw.split(",") if k.strip())
 
-    # 1. Außentüren unterscheiden (Kelleraußentür vs. Hauseingangstür)
     if r.ist_aussen or ist_he:
         if ist_keller and not ist_he:
             return "Kelleraußentür"
         return "Hauseingangstür"
 
-    # 2. Innentüren nach Funktion & Geschoss unterscheiden
     if ist_we:
         return "Wohnungseingangstür"
     if ist_keller:
@@ -636,6 +749,89 @@ if (
     or (not df_entwaesserung.empty and (df_entwaesserung.Herkunft == "berechnet").any())
 ):
     st.caption("Teile der Maße wurden aus der 3D-Geometrie berechnet (Spalte „Herkunft“).")
+
+
+# ==============================================================================
+# 5B. INTERAKTIVE 3D-GEBÄUDEVORSCHAU (IN TYPISCHEN BIM-FARBEN)
+# ==============================================================================
+with st.expander("Interaktive 3D-Gebäudevorschau (OpenBIM-Modell)", expanded=True):
+    meshes_3d, dreiecke_anzahl, modell_gekurzt = extrahiere_3d_meshes(ifc_bytes)
+
+    if not meshes_3d:
+        st.info("Für dieses IFC-Modell konnten keine darstellbaren 3D-Körper erzeugt werden.")
+    else:
+        st.caption(
+            "Steuerung: Linke Maustaste = Drehen | Rechte Maustaste = Verschieben | Mausrad = Zoomen. "
+            "Über die Auswahlfelder lassen sich einzelne Bauteilgruppen gezielt ein- oder ausblenden:"
+        )
+
+        # Checkboxen zum Ein-/Ausblenden der einzelnen Bauteilgruppen in 4 Spalten
+        gruppen_namen = list(BIM_FARBEN.keys())
+        aktive_gruppen = {}
+        cb_spalten = st.columns(4)
+        for idx, gruppe in enumerate(gruppen_namen):
+            anzahl_bt = meshes_3d[gruppe]["bauteile"] if gruppe in meshes_3d else 0
+            with cb_spalten[idx % 4]:
+                aktive_gruppen[gruppe] = st.checkbox(
+                    f"{gruppe} ({anzahl_bt})",
+                    value=BIM_FARBEN[gruppe]["standard_an"] and (anzahl_bt > 0),
+                    disabled=(anzahl_bt == 0),
+                    key=f"vis_3d_{gruppe}"
+                )
+
+        # Plotly 3D-Szene aus den aktivierten Bauteilgruppen zusammenbauen
+        fig_3d = go.Figure()
+        for gruppe, aktiv in aktive_gruppen.items():
+            if not aktiv or gruppe not in meshes_3d:
+                continue
+            verts = meshes_3d[gruppe]["verts"]
+            faces = meshes_3d[gruppe]["faces"]
+            stil = BIM_FARBEN[gruppe]
+
+            fig_3d.add_trace(go.Mesh3d(
+                x=verts[:, 0],
+                y=verts[:, 1],
+                z=verts[:, 2],
+                i=faces[:, 0],
+                j=faces[:, 1],
+                k=faces[:, 2],
+                color=stil["farbe"],
+                opacity=stil["deckkraft"],
+                name=f"{gruppe} ({meshes_3d[gruppe]['bauteile']})",
+                showlegend=True,
+                flatshading=True,
+                lighting=dict(ambient=0.65, diffuse=0.85, roughness=0.5, specular=0.2),
+                hovertemplate=f"<b>{gruppe}</b><br>X: %{{x:.2f}} m<br>Y: %{{y:.2f}} m<br>Z: %{{z:.2f}} m<extra></extra>",
+            ))
+
+        fig_3d.update_layout(
+            height=580,
+            margin=dict(l=0, r=0, t=10, b=0),
+            paper_bgcolor="#FAF7F2",
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.01,
+                xanchor="left",
+                x=0,
+                bgcolor="rgba(255,255,255,0.85)"
+            ),
+            scene=dict(
+                aspectmode="data",  # Unverzerrte 1:1:1-Proportionen des Gebäudes
+                xaxis=dict(title="X (m)", backgroundcolor="#F5EFE6", gridcolor="#DDD3C5", showbackground=True),
+                yaxis=dict(title="Y (m)", backgroundcolor="#F5EFE6", gridcolor="#DDD3C5", showbackground=True),
+                zaxis=dict(title="Höhe Z (m)", backgroundcolor="#EDE4D7", gridcolor="#DDD3C5", showbackground=True),
+                camera=dict(eye=dict(x=1.45, y=-1.45, z=0.95)),
+            ),
+        )
+
+        st.plotly_chart(fig_3d, use_container_width=True)
+
+        if modell_gekurzt:
+            st.caption(
+                f"Hinweis: Sehr detailliertes Modell – die 3D-Vorschau wurde aus Performance-Gründen "
+                f"auf {dreiecke_anzahl:,} Dreiecke begrenzt (die Mengenberechnung unten ist davon nicht betroffen)."
+            )
 
 
 # ==============================================================================
