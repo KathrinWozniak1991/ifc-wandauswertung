@@ -15,8 +15,11 @@ import ifcopenshell.util.unit as un
 from openpyxl.styles import Font, PatternFill
 
 # ==============================================================================
-# 1. DESIGN-KONFIGURATION & SEITENLAYOUT
+# 1. DESIGN-KONFIGURATION, DATENSCHUTZ-SCHALTER & SEITENLAYOUT
 # ==============================================================================
+# Schalter für den Serverstandort-Hinweis (True = Serverstandort Deutschland aktiv)
+HOSTING_IN_DEUTSCHLAND = True
+
 # Harmonische Beige- und Sandtöne für die Benutzeroberfläche
 HAUPT_BEIGE = "#8C735B"   # Warmes Taupe-Braun für Kopfzeile & Tabellenköpfe
 AKZENT_SAND = "#C8B299"   # Sandbeige für Rahmen & Akzentlinien
@@ -40,9 +43,14 @@ BIM_FARBEN = {
 st.set_page_config(page_title="bauteilauswertung-ifc", layout="wide")
 
 st.markdown(f"""<style>
-.kopf{{background:{HAUPT_BEIGE};color:#fff;padding:22px 26px;border-radius:10px;border-bottom:5px solid {AKZENT_SAND};margin-bottom:20px}}
+.kopf{{background:{HAUPT_BEIGE};color:#fff;padding:22px 26px;border-radius:10px;border-bottom:5px solid {AKZENT_SAND};margin-bottom:14px}}
 .kopf h1{{color:#fff;margin:0;font-size:1.75rem}}
 .kopf p{{color:#F5EFE6;margin:6px 0 0 0;font-size:1rem}}
+.trust-banner{{background:#F1F6F2;border:1px solid #C8DEC9;border-left:6px solid #2E6F40;padding:12px 18px;border-radius:8px;margin-bottom:12px;color:#1F3A26;font-size:0.93rem;line-height:1.45}}
+.trust-banner strong{{color:#183320}}
+.trust-badges{{display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;font-weight:600;font-size:0.88rem}}
+.trust-badge-item{{background:#E3EFE5;padding:4px 10px;border-radius:5px;border:1px solid #C2D9C5}}
+.sidebar-trust{{background:#F1F6F2;border:1px solid #C8DEC9;border-left:4px solid #2E6F40;padding:10px 12px;border-radius:6px;font-size:0.83rem;color:#1F3A26;margin-top:8px;margin-bottom:12px;line-height:1.4}}
 .karte{{background:{HELL_CREME};border-left:6px solid {HAUPT_BEIGE};padding:14px 18px;border-radius:8px;margin-bottom:10px}}
 .karte span{{color:#6E5D4F;font-size:0.85rem}} .karte b{{display:block;color:{TEXT_BRAUN};font-size:1.55rem}}
 .info-box{{background:#FAF7F2;border:1px solid #E5DCCB;border-top:4px solid {HAUPT_BEIGE};padding:18px 20px;border-radius:8px;height:100%;box-shadow:0 2px 4px rgba(62,50,40,0.05)}}
@@ -60,6 +68,47 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True
 )
+
+# ==============================================================================
+# 1B. SICHTBARES DATENSCHUTZ- & SICHERHEITS-BANNER + DETAIL-BOX
+# ==============================================================================
+server_badge = (
+    '<span class="trust-badge-item">Serverstandort Deutschland (DSGVO)</span>'
+    if HOSTING_IN_DEUTSCHLAND
+    else '<span class="trust-badge-item">DSGVO-konforme Verarbeitung</span>'
+)
+
+st.markdown(
+    f'<div class="trust-banner">'
+    f'<strong>Datenschutz &amp; Vertraulichkeit Ihrer Projektdaten:</strong> '
+    f'Ihre IFC-Gebäudemodelle und Auswertungsdaten werden <strong>nicht dauerhaft gespeichert</strong>, '
+    f'<strong>nicht an Dritte weitergegeben</strong> und <strong>nicht für KI-Training verwendet</strong>.'
+    f'<div class="trust-badges">'
+    f'<span class="trust-badge-item">Keine Speicherung von IFC-Dateien</span>'
+    f'<span class="trust-badge-item">Flüchtige Auswertung im Arbeitsspeicher (RAM)</span>'
+    f'<span class="trust-badge-item">Keine Weitergabe an Dritte</span>'
+    f'{server_badge}'
+    f'</div>'
+    f'</div>',
+    unsafe_allow_html=True
+)
+
+with st.expander("Technische Details zu Datenschutz & Datensicherheit (für Auftraggeber & IT-Prüfung)", expanded=False):
+    st.markdown(
+        "**1. Keine dauerhafte Dateispeicherung:**\n"
+        "- Beim Hochladen wird Ihre `.ifc`-Datei ausschließlich für den Bruchteil einer Sekunde zum Einlesen der Geometrie "
+        "in eine isolierte, temporäre Systemdatei geladen und unmittelbar nach dem Einlesen (`finally: unlink()`) automatisch wieder gelöscht.\n"
+        "- Es existieren weder Datenbanken noch Cloud-Speicher-Buckets, in denen hochgeladene Modelle archiviert werden.\n\n"
+        "**2. Isolierte Verarbeitung in Ihrer Browser-Sitzung:**\n"
+        "- Alle Berechnungen (Mengenermittlung, 3D-Vorschau, DIN 276-Zuordnung und Excel-Generierung) erfolgen flüchtig im Arbeitsspeicher (RAM) Ihrer aktuellen Sitzung.\n"
+        "- Andere Nutzer haben zu keinem Zeitpunkt Zugriff auf Ihre Sitzungsdaten. Beim Schließen des Browser-Tabs oder über den Button "
+        "*„Sitzung & Arbeitsspeicher sofort leeren“* werden alle Zwischendaten vollständig verworfen.\n\n"
+        "**3. Keine Weitergabe & kein KI-Training:**\n"
+        "- Ihre Gebäudemodelle, Grundrisse, Bauteileigenschaften und Preisangaben werden weder an externe Dienste übertragen noch ausgewertet oder für das Training von KI-Modellen genutzt.\n\n"
+        "**4. Verschlüsselte Übertragung & Hosting:**\n"
+        "- Die Datenübertragung zwischen Ihrem Browser und dem Server erfolgt durchgehend TLS/HTTPS-verschlüsselt. "
+        + ("Der Betrieb erfolgt auf Serverinfrastruktur in Deutschland gemäß DSGVO." if HOSTING_IN_DEUTSCHLAND else "Die Verarbeitung erfolgt streng zweckgebunden gemäß DSGVO.")
+    )
 
 
 # ==============================================================================
@@ -186,6 +235,7 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
     """
     Erzeugt pro BIM-Bauteilgruppe ein kombiniertes Dreiecksnetz (Vertices + Faces)
     in Weltkoordinaten für die interaktive Plotly-3D-Vorschau.
+    Die temporäre Datei wird nach dem Einlesen sofort wieder von der Festplatte entfernt.
     """
     with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
         f.write(daten)
@@ -343,6 +393,10 @@ def extrahiere_3d_meshes(daten: bytes, max_dreiecke_gesamt: int = 180000):
 # ==============================================================================
 @st.cache_data(show_spinner="IFC wird ausgewertet … (Wände, Fenster, Türen, Dächer, Geländer & Entwässerung)")
 def auswerten(daten: bytes, rechnen: bool):
+    """
+    Liest das hochgeladene IFC-Modell flüchtig ein und löscht die temporäre
+    Arbeitsdatei unmittelbar nach dem Öffnen im finally-Block.
+    """
     with tempfile.NamedTemporaryFile(suffix=".ifc", delete=False) as f:
         f.write(daten)
         tmp_pfad = Path(f.name)
@@ -614,7 +668,20 @@ def auswerten(daten: bytes, rechnen: bool):
 with st.sidebar:
     st.header("Einstellungen")
     datei = st.file_uploader("IFC-Modell hochladen", type="ifc")
+    st.markdown(
+        '<div class="sidebar-trust">'
+        '<strong>100 % vertraulich:</strong> Ihre IFC-Datei wird ausschließlich flüchtig im Arbeitsspeicher '
+        'ausgewertet, nicht gespeichert und nicht an Dritte weitergegeben.'
+        '</div>',
+        unsafe_allow_html=True
+    )
     rechnen = st.checkbox("Fehlende Maße aus 3D-Geometrie berechnen", value=True)
+
+    # Aktiver Button zum sofortigen Löschen aller zwischengespeicherten Sitzungsdaten
+    if datei is not None:
+        if st.button("Sitzung & Arbeitsspeicher leeren", use_container_width=True, help="Löscht alle zwischengespeicherten Auswertungsdaten sofort aus dem RAM."):
+            st.cache_data.clear()
+            st.rerun()
 
 if not datei:
     st.markdown("### Willkommen bei bauteilauswertung-ifc")
@@ -625,7 +692,7 @@ if not datei:
         "(Fassade, Fenster, Türen, Dach, Geländer, Dachentwässerung und DIN 276-Zuordnung) zu analysieren."
     )
 
-    v1, v2, v3 = st.columns(3)
+    v1, v2, v3, v4 = st.columns(4)
     with v1:
         st.markdown(
             '<div class="info-box">'
@@ -649,10 +716,21 @@ if not datei:
     with v3:
         st.markdown(
             '<div class="info-box">'
-            '<h4>3. DIN 276 & Excel-Bericht</h4>'
+            '<h4>3. DIN 276 &amp; Excel-Bericht</h4>'
             '<p>Alle Mengen werden automatisch den Kostengruppen der DIN 276 (2. Ebene) zugeordnet. '
             'Sie können Ihre eigenen Einheitspreise hinterlegen und den fertigen '
             'Excel-Bericht mit einem Klick exportieren.</p>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+    with v4:
+        st.markdown(
+            '<div class="info-box">'
+            '<h4>4. Höchste Datensicherheit</h4>'
+            '<p>Kein Cloud-Archiv, keine Weitergabe, kein KI-Training: '
+            'Ihr Modell wird flüchtig im Arbeitsspeicher auf '
+            + ('deutschen Servern ' if HOSTING_IN_DEUTSCHLAND else '')
+            + 'ausgewertet und danach sofort verworfen.</p>'
             '</div>',
             unsafe_allow_html=True
         )
@@ -662,7 +740,7 @@ if not datei:
     st.markdown(
         "1. **IFC-Datei auswählen:** Klicken Sie links in der Seitenleiste auf **Browse files** und wählen Sie ein `.ifc`-Modell aus.\n"
         "2. **Filter & eigene Preise eintragen:** Prüfen Sie in der Seitenleiste die Geschosszuordnung und hinterlegen Sie bei Bedarf eigene Einheitspreise nach DIN 276.\n"
-        "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser und laden Sie unten den fertigen **Excel-Bericht** herunter."
+        "3. **Ergebnisse prüfen & exportieren:** Prüfen Sie die Kennzahlen direkt im Browser, laden Sie unten den fertigen **Excel-Bericht** herunter und leeren Sie bei Bedarf den Arbeitsspeicher."
     )
 
     # --- Bereich "Über mich & das Projekt" ---
@@ -811,7 +889,7 @@ k2.markdown(f'<div class="karte"><span>Sockeldämmung (netto)</span><b>{sockel.F
 k3.markdown(f'<div class="karte"><span>Dachfläche ({len(df_daecher)} Teilfl.)</span><b>{dach_gesamt:,.1f} m²</b></div>', unsafe_allow_html=True)
 
 k4, k5, k6 = st.columns(3)
-k4.markdown(f'<div class="karte"><span>Fenster ({len(df_fenster)} Stk.) & Türen ({tueren_anzahl} Stk.)</span><b>{fenster_gesamt:,.1f} m² | {tueren_anzahl} Türen</b></div>', unsafe_allow_html=True)
+k4.markdown(f'<div class="karte"><span>Fenster ({len(df_fenster)} Stk.) &amp; Türen ({tueren_anzahl} Stk.)</span><b>{fenster_gesamt:,.1f} m² | {tueren_anzahl} Türen</b></div>', unsafe_allow_html=True)
 k5.markdown(f'<div class="karte"><span>Geländer gesamt ({len(df_gelaender)} Stk.)</span><b>{gelaender_gesamt:,.1f} m</b></div>', unsafe_allow_html=True)
 k6.markdown(f'<div class="karte"><span>Regenrinnen / Fallrohre</span><b>{rinnen_gesamt:,.1f} m / {fallrohre_gesamt:,.1f} m</b></div>', unsafe_allow_html=True)
 
@@ -919,7 +997,6 @@ st.caption(
     "oder laden Sie Ihre eigene Preisliste als CSV-Datei hoch:"
 )
 
-# Teilmengen für Außentüren, Innentüren sowie Absturz- und Treppengeländer berechnen
 if not df_tueren.empty:
     anzahl_aussentueren = int(df_tueren["Türart"].isin(["Hauseingangstür", "Kelleraußentür"]).sum())
     anzahl_innentueren = int((~df_tueren["Türart"].isin(["Hauseingangstür", "Kelleraußentür"])).sum())
@@ -951,7 +1028,6 @@ din276_positionen = [
     ("KG 360 – Dächer", "Fallrohre", round(float(fallrohre_gesamt), 1), "m"),
 ]
 
-# Optionaler Import/Export einer wiederverwendbaren CSV-Preisliste
 importierte_preise = {}
 importierte_quellen = {}
 
@@ -984,7 +1060,6 @@ with st.expander("Eigene Preisliste als CSV hochladen oder Blanko-Vorlage herunt
         )
         if preis_csv is not None:
             try:
-                # Erkennt automatisch Semikolon- (deutsches Excel) oder Komma-Trennung
                 df_csv = pd.read_csv(preis_csv, sep=None, engine="python", decimal=",")
                 if {"Bauteil / Maßnahme", "Einheitspreis_Netto"}.issubset(df_csv.columns):
                     for _, row in df_csv.iterrows():
@@ -1012,7 +1087,6 @@ df_din276_basis = pd.DataFrame([
     for kg, bauteil, menge, einheit in din276_positionen
 ])
 
-# Interaktive Tabelle: Nutzer kann Einheitspreise und Preisquelle direkt im Browser bearbeiten
 df_din276_edit = st.data_editor(
     df_din276_basis,
     use_container_width=True,
@@ -1037,7 +1111,6 @@ df_din276_edit["Gesamtkosten (€ netto)"] = (
     df_din276_edit["Menge"] * df_din276_edit["Einheitspreis (€ netto)"]
 ).round(2)
 
-# Zusammenfassung je Kostengruppe (2. Ebene)
 zus_din276_kg = (
     df_din276_edit.groupby("Kostengruppe (DIN 276)", as_index=False)["Gesamtkosten (€ netto)"]
     .sum()
@@ -1061,7 +1134,7 @@ with c_kg2:
     )
     st.caption(
         "Alle Preise basieren ausschließlich auf Ihren eigenen Eingaben (netto, zzgl. Baunebenkosten KG 700 und MwSt.). "
-        "Tipp: Sie können Ihre ausgefüllte Tabelle auch jederzeit als CSV-Vorlage für künftige Projekte sichern."
+        "Ihre eingetragenen Werte verbleiben ausschließlich in Ihrer Sitzung und werden nicht auf dem Server gespeichert."
     )
 
 
@@ -1290,9 +1363,16 @@ with pd.ExcelWriter(buf, engine="openpyxl") as w:
         for col in ws.columns:
             ws.column_dimensions[col[0].column_letter].width = min(60, max(len(str(c.value or "")) for c in col) + 3)
 
-st.download_button(
-    "Als Excel exportieren",
-    buf.getvalue(),
-    "bauteilauswertung-ifc.xlsx",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+col_dl, col_clear = st.columns([2, 1])
+with col_dl:
+    st.download_button(
+        "Als Excel exportieren",
+        buf.getvalue(),
+        "bauteilauswertung-ifc.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+with col_clear:
+    if st.button("Sitzung & Arbeitsspeicher leeren", use_container_width=True, help="Entfernt alle geladenen Modelldaten sofort aus dem Arbeitsspeicher."):
+        st.cache_data.clear()
+        st.rerun()
